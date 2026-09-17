@@ -1,10 +1,29 @@
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+const GROQ_MODEL = process.env.GROQ_MODEL || "qwen/qwen3.8-27b";
 
 // Gemini's structured-output schema is a restricted subset of OpenAPI (no
 // nullable enum members, and enum values can't be empty strings), so "not in
 // the list" is represented with a "none" sentinel and normalized to null
 // afterwards.
 const NO_CATEGORY = "none";
+
+// Google geo-blocks the Gemini API for whole countries: from the production
+// server (a KZ datacenter) every call fails with 400 FAILED_PRECONDITION
+// "User location is not supported for the API use.", while the same key works
+// from a local machine on a consumer ISP. Groq is reachable from there, so the
+// provider is selectable: prod sets GROQ_API_KEY, local dev can keep using
+// Gemini. Explicit VISUAL_SEARCH_PROVIDER wins; otherwise whichever key exists.
+function resolveProvider() {
+  const explicit = String(process.env.VISUAL_SEARCH_PROVIDER || "").trim().toLowerCase();
+  if (explicit === "groq" || explicit === "gemini") return explicit;
+  return process.env.GROQ_API_KEY ? "groq" : "gemini";
+}
+
+function isConfigured() {
+  return resolveProvider() === "groq"
+    ? Boolean(process.env.GROQ_API_KEY)
+    : Boolean(process.env.GEMINI_API_KEY);
+}
 
 // The category enum has to be built per-request from the live catalog
 // (passed in as `categories`), not hardcoded: it used to be a fixed list of
@@ -43,13 +62,52 @@ function buildComponentSchema(categories) {
   };
 }
 
+// Groq speaks OpenAI's `json_schema` response format, which is plain JSON
+// Schema rather than Gemini's OpenAPI dialect, and strict mode additionally
+// requires `additionalProperties: false` on every object.
+function buildGroqSchema(categories) {
+  return {
+    type: "object",
+    properties: {
+      components: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            type: { type: "string" },
+            category_id: { type: "string", enum: [...categories.map((c) => c.id), NO_CATEGORY] },
+            description: { type: "string" },
+            keywords: { type: "array", items: { type: "string" } }
+          },
+          required: ["type", "category_id", "description", "keywords"],
+          additionalProperties: false
+        }
+      }
+    },
+    required: ["components"],
+    additionalProperties: false
+  };
+}
+
+function buildPrompt(categories) {
+  const categoryList = categories.map((c) => `- ${c.id}: ${c.title}`).join("\n");
+  return (
+    "На фото — интерьер или элементы ванной комнаты. Определи каждый видимый сантехнический компонент " +
+    "(смесители, душевые системы, полотенцесушители, унитазы, инсталляции, аксессуары и т.д.).\n\n" +
+    "Для каждого компонента укажи наиболее подходящую категорию из списка:\n" +
+    categoryList +
+    `\n\nЕсли компонент не относится ни к одной категории, укажи category_id: "${NO_CATEGORY}". ` +
+    "Не включай элементы, не относящиеся к сантехнике (плитка, мебель, зеркала и т.п.), если они явно не являются частью выбранных категорий."
+  );
+}
+
 // Photos come straight from a phone camera or a screenshot (often several MB,
-// far larger than Gemini needs to identify a fixture) — the upload and the
+// far larger than the model needs to identify a fixture) — the upload and the
 // model's own image-processing time both scale with payload size. Shrinking
 // to a still-plenty-detailed 1280px/JPEG before sending noticeably cuts
 // response time without hurting recognition quality. Falls back to the
 // original bytes if sharp can't decode the input for any reason.
-async function prepareImageForGemini(buffer, mediaType) {
+async function prepareImage(buffer, mediaType) {
   try {
     const sharp = require("sharp");
     const resized = await sharp(buffer)
@@ -62,68 +120,27 @@ async function prepareImageForGemini(buffer, mediaType) {
   }
 }
 
-async function analyzeImage({ buffer, mediaType, categories }) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
-  if (!Array.isArray(categories) || categories.length === 0) {
-    throw new Error("No catalog categories available for visual search");
-  }
-
-  const categoryList = categories.map((c) => `- ${c.id}: ${c.title}`).join("\n");
-  const prepared = await prepareImageForGemini(buffer, mediaType);
-
-  const requestBody = {
-    contents: [
-      {
-        parts: [
-          { inline_data: { mime_type: prepared.mediaType, data: prepared.buffer.toString("base64") } },
-          {
-            text:
-              "На фото — интерьер или элементы ванной комнаты. Определи каждый видимый сантехнический компонент " +
-              "(смесители, душевые системы, полотенцесушители, унитазы, инсталляции, аксессуары и т.д.).\n\n" +
-              "Для каждого компонента укажи наиболее подходящую категорию из списка:\n" +
-              categoryList +
-              `\n\nЕсли компонент не относится ни к одной категории, укажи category_id: "${NO_CATEGORY}". ` +
-              "Не включай элементы, не относящиеся к сантехнике (плитка, мебель, зеркала и т.п.), если они явно не являются частью выбранных категорий."
-          }
-        ]
-      }
-    ],
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: buildComponentSchema(categories)
-    }
-  };
-
-  // Gemini's free tier returns 503 ("high demand") / 429 fairly often; a couple
-  // of quick retries turn what the user would see as "сайт не работает" into a
-  // slightly slower but successful request.
+// Both providers' free tiers return 503 ("high demand") / 429 fairly often; a
+// couple of quick retries turn what the user would see as "сайт не работает"
+// into a slightly slower but successful request.
+async function postWithRetry(label, url, options) {
   let res;
-  let lastErrText = "";
   for (let attempt = 0; attempt < 3; attempt++) {
-    res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody)
-      }
-    );
+    res = await fetch(url, options);
+    if (res.ok) return res;
 
-    if (res.ok) break;
-
-    lastErrText = await res.text().catch(() => "");
+    const errText = await res.text().catch(() => "");
     const retryable = res.status === 503 || res.status === 429 || res.status >= 500;
     if (!retryable || attempt === 2) {
-      throw new Error(`Gemini API error ${res.status}: ${lastErrText.slice(0, 300)}`);
+      throw new Error(`${label} API error ${res.status}: ${errText.slice(0, 300)}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 1200 * (attempt + 1)));
   }
+  return res;
+}
 
-  const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.find((p) => typeof p.text === "string")?.text;
+function parseComponents(text) {
   if (!text) return { components: [] };
-
   try {
     const parsed = JSON.parse(text);
     const components = Array.isArray(parsed.components) ? parsed.components : [];
@@ -136,6 +153,95 @@ async function analyzeImage({ buffer, mediaType, categories }) {
   } catch (e) {
     return { components: [] };
   }
+}
+
+async function analyzeWithGemini({ buffer, mediaType, categories }) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
+
+  const prepared = await prepareImage(buffer, mediaType);
+  const requestBody = {
+    contents: [
+      {
+        parts: [
+          { inline_data: { mime_type: prepared.mediaType, data: prepared.buffer.toString("base64") } },
+          { text: buildPrompt(categories) }
+        ]
+      }
+    ],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: buildComponentSchema(categories)
+    }
+  };
+
+  const res = await postWithRetry(
+    "Gemini",
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody)
+    }
+  );
+
+  const data = await res.json();
+  const text = data?.candidates?.[0]?.content?.parts?.find((p) => typeof p.text === "string")?.text;
+  return parseComponents(text);
+}
+
+async function analyzeWithGroq({ buffer, mediaType, categories }) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error("GROQ_API_KEY is not configured");
+
+  const prepared = await prepareImage(buffer, mediaType);
+  const dataUrl = `data:${prepared.mediaType};base64,${prepared.buffer.toString("base64")}`;
+
+  // The model answers in English by default even when the prompt is Russian,
+  // and English keywords match nothing in a Russian catalog — hence the
+  // explicit language instruction on top of the shared prompt.
+  const requestBody = {
+    model: GROQ_MODEL,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              buildPrompt(categories) +
+              "\n\nВсе значения полей type, description и keywords пиши ТОЛЬКО на русском языке."
+          },
+          { type: "image_url", image_url: { url: dataUrl } }
+        ]
+      }
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: { name: "components", strict: true, schema: buildGroqSchema(categories) }
+    },
+    temperature: 0,
+    max_tokens: 2000
+  };
+
+  const res = await postWithRetry("Groq", "https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(requestBody)
+  });
+
+  const data = await res.json();
+  return parseComponents(data?.choices?.[0]?.message?.content);
+}
+
+async function analyzeImage({ buffer, mediaType, categories }) {
+  if (!Array.isArray(categories) || categories.length === 0) {
+    throw new Error("No catalog categories available for visual search");
+  }
+
+  return resolveProvider() === "groq"
+    ? analyzeWithGroq({ buffer, mediaType, categories })
+    : analyzeWithGemini({ buffer, mediaType, categories });
 }
 
 // The catalog spells colours without ё ("Черный матовый"), while the model
@@ -209,4 +315,4 @@ async function findMatches({ Product, component, limit = 6 }) {
   return scored;
 }
 
-module.exports = { analyzeImage, findMatches };
+module.exports = { analyzeImage, findMatches, isConfigured };

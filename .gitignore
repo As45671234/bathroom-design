@@ -21,6 +21,8 @@ backend/.test2.png
 scripts/scraper/out/
 scripts/scraper/run.log
 scripts/file/
+*.xlsx
+~$*
 
 # Прочее
 *.log

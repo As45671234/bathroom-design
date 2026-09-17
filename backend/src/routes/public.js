@@ -7,7 +7,7 @@ const CategoryMeta = require("../models/CategoryMeta");
 const SiteSettings = require("../models/SiteSettings");
 const Designer = require("../models/Designer");
 const { normalizeImageUrl, normalizeSiteSettings } = require("../utils");
-const { analyzeImage, findMatches } = require("../services/visualSearch");
+const { analyzeImage, findMatches, isConfigured } = require("../services/visualSearch");
 
 const visualSearchUpload = multer({
   storage: multer.memoryStorage(),
@@ -138,7 +138,7 @@ function publicRoutes(emailLimiter) {
   router.post("/visual-search", visualSearchUpload.single("image"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "Файл изображения обязателен" });
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!isConfigured()) {
       return res.status(503).json({ error: "Функция распознавания фото временно недоступна" });
     }
 
