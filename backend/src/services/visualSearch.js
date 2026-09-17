@@ -1,6 +1,13 @@
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 const GROQ_MODEL = process.env.GROQ_MODEL || "qwen/qwen3.8-27b";
 
+// Google refuses the request outright when it comes from the production host's
+// ASN (see resolveProvider below), so prod points this at a thin pass-through
+// proxy that forwards to Google from an unblocked network. The proxy must keep
+// the path and query intact - only the origin is swapped.
+const GEMINI_BASE_URL = (process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com")
+  .replace(/\/+$/, "");
+
 // Gemini's structured-output schema is a restricted subset of OpenAPI (no
 // nullable enum members, and enum values can't be empty strings), so "not in
 // the list" is represented with a "none" sentinel and normalized to null
@@ -13,16 +20,22 @@ const NO_CATEGORY = "none";
 // from a local machine on a consumer ISP. Groq is reachable from there, so the
 // provider is selectable: prod sets GROQ_API_KEY, local dev can keep using
 // Gemini. Explicit VISUAL_SEARCH_PROVIDER wins; otherwise whichever key exists.
+// Gemini is the preferred provider: side-by-side on the same bathroom photo it
+// identified 7 fixtures where Groq's qwen found 1, and it read the basin mixer
+// as "золотой, на раковину" where Groq called the same tap "настенный, хром" -
+// wrong colour and wrong mount, which then steered the whole match downstream.
+function hasKey(provider) {
+  return provider === "groq" ? Boolean(process.env.GROQ_API_KEY) : Boolean(process.env.GEMINI_API_KEY);
+}
+
 function resolveProvider() {
   const explicit = String(process.env.VISUAL_SEARCH_PROVIDER || "").trim().toLowerCase();
   if (explicit === "groq" || explicit === "gemini") return explicit;
-  return process.env.GROQ_API_KEY ? "groq" : "gemini";
+  return hasKey("gemini") ? "gemini" : "groq";
 }
 
 function isConfigured() {
-  return resolveProvider() === "groq"
-    ? Boolean(process.env.GROQ_API_KEY)
-    : Boolean(process.env.GEMINI_API_KEY);
+  return hasKey("gemini") || hasKey("groq");
 }
 
 // The category enum has to be built per-request from the live catalog
@@ -97,7 +110,15 @@ function buildPrompt(categories) {
     "Для каждого компонента укажи наиболее подходящую категорию из списка:\n" +
     categoryList +
     `\n\nЕсли компонент не относится ни к одной категории, укажи category_id: "${NO_CATEGORY}". ` +
-    "Не включай элементы, не относящиеся к сантехнике (плитка, мебель, зеркала и т.п.), если они явно не являются частью выбранных категорий."
+    "Не включай элементы, не относящиеся к сантехнике (плитка, мебель, зеркала и т.п.), если они явно не являются частью выбранных категорий.\n\n" +
+    // Mount type is what a person actually points at in a photo and it is a
+    // filterable attribute on almost every product, but the model only
+    // volunteered it sometimes - so a deck-mounted gold tap kept matching
+    // concealed and wall-mounted ones that were gold too. Asking for the term
+    // verbatim gives the scorer something decisive to match on.
+    "В keywords обязательно включи тип установки, если он виден на фото, используя точную формулировку: " +
+    "«на раковину», «настенный», «встраиваемый», «напольный», «подвесной», «накладная», «врезная». " +
+    "Для смесителя всегда указывай, стоит он на раковине, на стене или встроен в стену."
   );
 }
 
@@ -177,10 +198,15 @@ async function analyzeWithGemini({ buffer, mediaType, categories }) {
 
   const res = await postWithRetry(
     "Gemini",
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    `${GEMINI_BASE_URL}/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // Keeps the proxy from being usable as an open Gemini relay by anyone
+        // who guesses its address. Ignored when talking to Google directly.
+        ...(process.env.GEMINI_PROXY_SECRET ? { "x-proxy-secret": process.env.GEMINI_PROXY_SECRET } : {})
+      },
       body: JSON.stringify(requestBody)
     }
   );
@@ -239,9 +265,19 @@ async function analyzeImage({ buffer, mediaType, categories }) {
     throw new Error("No catalog categories available for visual search");
   }
 
-  return resolveProvider() === "groq"
-    ? analyzeWithGroq({ buffer, mediaType, categories })
-    : analyzeWithGemini({ buffer, mediaType, categories });
+  const run = { gemini: analyzeWithGemini, groq: analyzeWithGroq };
+  const primary = resolveProvider();
+  const secondary = primary === "gemini" ? "groq" : "gemini";
+
+  try {
+    return await run[primary]({ buffer, mediaType, categories });
+  } catch (err) {
+    // Gemini reaches Google through a proxy we don't control; if that hop dies
+    // the feature should degrade to the weaker model rather than 503 the user.
+    if (!hasKey(secondary)) throw err;
+    console.error(`[visual-search] ${primary} failed, falling back to ${secondary}:`, err.message);
+    return run[secondary]({ buffer, mediaType, categories });
+  }
 }
 
 // The catalog spells colours without ё ("Черный матовый"), while the model
@@ -255,12 +291,47 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// The model writes ordinary inflected Russian while the catalog stores its own
+// grammatical forms, so the two never line up literally: "подвесной унитаз" vs
+// attr "Установка: Подвесная", "золотой" vs "Цвет: Золото". Neither whole-word
+// nor substring matching catches those pairs, which is why a wall-hung toilet
+// scored below a floor-standing one. Cutting the inflectional ending (longest
+// first, never below 3 chars so "душ" can't collapse into "душевой") makes the
+// forms comparable without pulling in a real stemmer.
+const RU_ENDINGS = [
+  "ами", "ями", "ого", "его", "ому", "ему", "ыми", "ими",
+  "ая", "яя", "ое", "ее", "ые", "ие", "ый", "ий", "ой", "ым", "им",
+  "ом", "ем", "ую", "юю", "ых", "их", "ов", "ев", "ей",
+  "а", "я", "ы", "и", "у", "ю", "е", "о", "ь", "й"
+];
+
+function stemRu(word) {
+  for (const ending of RU_ENDINGS) {
+    if (word.length - ending.length >= 3 && word.endsWith(ending)) {
+      return word.slice(0, -ending.length);
+    }
+  }
+  return word;
+}
+
+function stemsOf(text) {
+  return new Set((text.match(/[a-zа-я0-9]+/g) || []).map(stemRu));
+}
+
 // Fields carry different signal strength for "is this the product in the
 // photo": the product name is the strongest signal, attrs (material, shape,
 // mount type...) are specific and reliable, brand/collection are weak on
 // their own (a keyword like "хром" matching the brand name would be a
 // coincidence, not a real signal).
-const FIELD_WEIGHTS = { name: 3, attr: 2, collection: 1, brand: 1 };
+const FIELD_WEIGHTS = { name: 3, attr: 2, keyAttr: 4, collection: 1, brand: 1 };
+
+// Not all attrs are equally decisive. Whether a mixer is wall-mounted or sits
+// on the basin, and what colour it is, are the things a person actually points
+// at in a photo; "Материал: Латунь" is true of almost the whole catalogue. With
+// every attr weighted the same, those tie-breakers drowned in noise.
+const KEY_ATTRS = new Set([
+  "установка", "назначение", "цвет", "название цвета", "color", "тип излива", "форма излива"
+]);
 
 // Previously this scored a keyword as a hit whenever it was a raw substring
 // of the concatenated name+brand+collection+attrs text (e.g. the keyword
@@ -275,19 +346,28 @@ function scoreProduct(product, keywords) {
     { text: product.name, weight: FIELD_WEIGHTS.name },
     { text: product.collection, weight: FIELD_WEIGHTS.collection },
     { text: product.brand, weight: FIELD_WEIGHTS.brand },
-    ...Object.values(product.attrs || {}).map((v) => ({ text: v, weight: FIELD_WEIGHTS.attr }))
+    ...Object.entries(product.attrs || {}).map(([key, v]) => ({
+      text: v,
+      weight: KEY_ATTRS.has(normalizeForMatch(key)) ? FIELD_WEIGHTS.keyAttr : FIELD_WEIGHTS.attr
+    }))
   ]
     .map(({ text, weight }) => ({ text: normalizeForMatch(text), weight }))
-    .filter(({ text }) => text);
+    .filter(({ text }) => text)
+    .map((field) => ({ ...field, stems: stemsOf(field.text) }));
 
   let score = 0;
   for (const kw of keywords) {
     const k = normalizeForMatch(kw);
     if (!k) continue;
     const wordBoundary = new RegExp(`(^|\\W)${escapeRegExp(k)}($|\\W)`);
-    for (const { text, weight } of fields) {
+    // A multi-word keyword ("для раковины") only counts as a stem hit when all
+    // of its words are present, otherwise "для" alone would match everything.
+    const kwStems = [...stemsOf(k)];
+
+    for (const { text, weight, stems } of fields) {
       if (text === k) score += weight * 2;
       else if (wordBoundary.test(text)) score += weight;
+      else if (kwStems.length && kwStems.every((s) => stems.has(s))) score += weight;
       else if (text.includes(k)) score += weight * 0.3;
     }
   }
@@ -298,7 +378,11 @@ async function findMatches({ Product, component, limit = 6 }) {
   const filter = { active: true, inStock: true };
   if (component.category_id) filter.category_id = component.category_id;
 
-  const candidates = await Product.find(filter).limit(500).lean();
+  // The cap used to be 500 while "Смесители" alone holds 1211 products, so 59%
+  // of that category was never even scored - the right item could not win
+  // because it was never a candidate. The bound stays only as a guard against a
+  // future catalogue that outgrows memory; today it admits every category.
+  const candidates = await Product.find(filter).limit(5000).lean();
   const keywords = [...(component.keywords || []), component.type].filter(Boolean);
 
   const scored = candidates
