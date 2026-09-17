@@ -1,0 +1,6 @@
+node_modules
+.env
+uploads/products/*
+uploads/category-videos/*
+!uploads/products/.gitkeep
+!uploads/category-videos/.gitkeep

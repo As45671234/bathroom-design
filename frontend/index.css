@@ -1,0 +1,126 @@
+/* frontend/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Roboto', sans-serif;
+  font-size: 14px;
+  line-height: 24px;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Visual search: while the AI reads the photo, a gold band sweeps down over it
+   and the frame corners breathe — the request takes several seconds and a bare
+   spinner gave no sense that the photo itself was being worked on. */
+@keyframes vsScan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(1000%);
+  }
+}
+
+.vs-scan {
+  animation: vsScan 2.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes vsPulse {
+  0%, 100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.vs-corner {
+  animation: vsPulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vs-scan,
+  .vs-corner {
+    animation: none;
+  }
+}
+
+/* Hide scrollbar for the horizontal category strip while keeping it scrollable */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Pages with a fixed mobile buy bar (product page) set data-buybar on <body>;
+   lift the floating WhatsApp button so it can't sit on top of the bar. */
+@media (max-width: 1023px) {
+  body[data-buybar] .wa-fab {
+    bottom: 6rem;
+  }
+}
+
+/* Turns the navy/gold logo mark white for use on dark backgrounds (transparent header, footer) */
+.logo-on-dark {
+  filter: brightness(0) invert(1);
+}
+
+/* Reveal-on-scroll animation itself now lives in components/Reveal.tsx (GSAP +
+   ScrollTrigger, see useSmoothScroll/getLenis in hooks/useLenis.ts for the
+   site-wide scroll setup it plugs into). No CSS classes needed here anymore. */

@@ -1,0 +1,28 @@
+# Зависимости
+node_modules/
+
+# Секреты
+.env
+.env.local
+*.pem
+
+# Сборка фронта
+frontend/dist/
+
+# Пользовательские загрузки и рабочие данные бэкенда
+backend/uploads/products/*
+backend/uploads/category-videos/*
+backend/uploads/import-chunks/*
+!backend/uploads/**/.gitkeep
+backend/backups/
+backend/.test2.png
+
+# Скрапер: код держим, выгрузки и исходные прайсы — нет
+scripts/scraper/out/
+scripts/scraper/run.log
+scripts/file/
+
+# Прочее
+*.log
+.DS_Store
+Thumbs.db
