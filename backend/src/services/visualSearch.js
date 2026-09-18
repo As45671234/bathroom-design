@@ -116,6 +116,7 @@ function buildPrompt(categories) {
     // volunteered it sometimes - so a deck-mounted gold tap kept matching
     // concealed and wall-mounted ones that were gold too. Asking for the term
     // verbatim gives the scorer something decisive to match on.
+    "Не выделяй вешалки и держатели полотенец — их подбирать не нужно, даже если они хорошо видны.\n\n" +
     "В keywords обязательно включи тип установки, если он виден на фото, используя точную формулировку: " +
     "«на раковину», «настенный», «встраиваемый», «напольный», «подвесной», «накладная», «врезная». " +
     "Для смесителя всегда указывай, стоит он на раковине, на стене или встроен в стену."
@@ -160,16 +161,25 @@ async function postWithRetry(label, url, options) {
   return res;
 }
 
+// Asked for by the owner: hangers and towel holders should never come back from
+// a photo. Both models keep volunteering them anyway, and the matches were junk
+// (a towel rail pulled in a hook, a toilet-paper holder, a cup and a brush), so
+// the prompt instruction is backed up by dropping them here. Deliberately does
+// not catch "полотенцесушитель" - heated towel rails are a real product line.
+const EXCLUDED_COMPONENT = /вешалк|полотенцедержат|держател\S*\s+(?:для\s+)?полотен/i;
+
 function parseComponents(text) {
   if (!text) return { components: [] };
   try {
     const parsed = JSON.parse(text);
     const components = Array.isArray(parsed.components) ? parsed.components : [];
     return {
-      components: components.map((c) => ({
-        ...c,
-        category_id: c.category_id && c.category_id !== NO_CATEGORY ? c.category_id : null
-      }))
+      components: components
+        .filter((c) => !EXCLUDED_COMPONENT.test(`${c.type || ""} ${c.description || ""}`))
+        .map((c) => ({
+          ...c,
+          category_id: c.category_id && c.category_id !== NO_CATEGORY ? c.category_id : null
+        }))
     };
   } catch (e) {
     return { components: [] };

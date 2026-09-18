@@ -4,13 +4,24 @@
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "frontend"],
-      "port": 3000
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "frontend"
+      ],
+      "port": 3000,
+      "autoPort": true
     },
     {
       "name": "backend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "backend"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "backend"
+      ],
       "port": 3001
     }
   ]

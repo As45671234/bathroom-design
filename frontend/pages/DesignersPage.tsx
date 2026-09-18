@@ -97,14 +97,14 @@ const DesignersPage: React.FC = () => {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0f1729]/60 via-transparent to-[#0f1729]/60" />
         <div className="container relative mx-auto px-6 text-center">
           <Reveal>
-            <div className="text-xs font-black uppercase tracking-[0.3em] text-[#CEA549]">Наша команда</div>
+            <div className="text-xs font-black uppercase tracking-[0.3em] text-[#CEA549]">Можем порекомендовать</div>
             <h1 className="mt-3 font-display italic text-4xl leading-[1.1] text-white drop-shadow-lg sm:text-5xl md:text-6xl">
               Дизайнеры
             </h1>
             <div className="mx-auto mt-5 h-px w-16 bg-[#CEA549]/50" />
             <p className="mx-auto mt-5 max-w-xl text-sm leading-relaxed text-white/75 md:text-base">
-              Помогаем спроектировать ванную комнату мечты — от подбора сантехники до готового 3D-визуала.
-              Свяжитесь с нашим дизайнером напрямую или оставьте заявку.
+              Эти дизайнеры помогут спроектировать ванную комнату мечты — от подбора сантехники до готового
+              3D-визуала. Свяжитесь с любым из них напрямую или оставьте заявку.
             </p>
             {status === 'ready' && designers.length > 0 ? (
               <div className="mx-auto mt-7 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white/80 backdrop-blur-sm">
