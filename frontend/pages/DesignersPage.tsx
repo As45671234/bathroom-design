@@ -22,8 +22,8 @@ const DesignersPage: React.FC = () => {
   useEffect(
     () =>
       applySeo({
-        title: 'Наши дизайнеры | Bathroom Design',
-        description: 'Команда дизайнеров интерьера ванных комнат Bathroom Design — опыт, портфолио, контакты для консультации.',
+        title: 'Рекомендуемые дизайнеры | Bathroom Design',
+        description: 'Дизайнеры интерьера ванных комнат, с которыми сотрудничает Bathroom Design — портфолио, контакты и специальные условия на комплектацию сантехники.',
       }),
     []
   );
@@ -97,17 +97,28 @@ const DesignersPage: React.FC = () => {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0f1729]/60 via-transparent to-[#0f1729]/60" />
         <div className="container relative mx-auto px-6 text-center">
           <Reveal>
-            <div className="text-xs font-black uppercase tracking-[0.3em] text-[#CEA549]">Можем порекомендовать</div>
+            <div className="text-xs font-black uppercase tracking-[0.3em] text-[#CEA549]">Партнёры</div>
             <h1 className="mt-3 font-display italic text-4xl leading-[1.1] text-white drop-shadow-lg sm:text-5xl md:text-6xl">
-              Дизайнеры
+              Рекомендуемые дизайнеры
             </h1>
             <div className="mx-auto mt-5 h-px w-16 bg-[#CEA549]/50" />
             <p className="mx-auto mt-5 max-w-xl text-sm leading-relaxed text-white/75 md:text-base">
-              Эти дизайнеры помогут спроектировать ванную комнату мечты — от подбора сантехники до готового
-              3D-визуала. Свяжитесь с любым из них напрямую или оставьте заявку.
+              Мы собрали для вас сильных дизайнеров интерьера Казахстана, с которыми сотрудничаем и которых
+              можем рекомендовать.
             </p>
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-white/75 md:text-base">
+              Закажите дизайн-проект у одного из наших партнёров — и получите специальные условия и скидку
+              на комплектацию сантехники в BATHROOM design.
+            </p>
+            <div className="mx-auto mt-7 flex max-w-xl flex-wrap items-center justify-center gap-x-3 gap-y-2 text-xs font-black uppercase tracking-widest text-[#CEA549]">
+              <span>Красивый проект</span>
+              <span className="text-white/25">•</span>
+              <span>Профессиональная комплектация</span>
+              <span className="text-white/25">•</span>
+              <span>Выгодные условия</span>
+            </div>
             {status === 'ready' && designers.length > 0 ? (
-              <div className="mx-auto mt-7 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white/80 backdrop-blur-sm">
+              <div className="mx-auto mt-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-white/80 backdrop-blur-sm">
                 <i className="fas fa-user-tie text-[#CEA549]"></i>
                 {designers.length} {pluralize(designers.length, ['дизайнер', 'дизайнера', 'дизайнеров'])}{' '}
                 {pluralize(designers.length, ['готов', 'готовы', 'готовы'])} помочь
