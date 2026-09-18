@@ -103,12 +103,8 @@ const DesignersPage: React.FC = () => {
             </h1>
             <div className="mx-auto mt-5 h-px w-16 bg-[#CEA549]/50" />
             <p className="mx-auto mt-5 max-w-xl text-sm leading-relaxed text-white/75 md:text-base">
-              Мы собрали для вас сильных дизайнеров интерьера Казахстана, с которыми сотрудничаем и которых
-              можем рекомендовать.
-            </p>
-            <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-white/75 md:text-base">
-              Закажите дизайн-проект у одного из наших партнёров — и получите специальные условия и скидку
-              на комплектацию сантехники в BATHROOM design.
+              Сильные дизайнеры интерьера Казахстана, с которыми мы сотрудничаем. Закажите проект у
+              партнёра — и получите скидку на комплектацию сантехники в BATHROOM design.
             </p>
             <div className="mx-auto mt-7 flex max-w-xl flex-wrap items-center justify-center gap-x-3 gap-y-2 text-xs font-black uppercase tracking-widest text-[#CEA549]">
               <span>Красивый проект</span>
