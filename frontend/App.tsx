@@ -4,6 +4,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { CatalogStatus, Category, CartItem, Product, SiteSettings } from './types';
 import Header from './components/Header';
 import Footer from './components/Footer';
+import ErrorBoundary from './components/ErrorBoundary';
 import HomePage from './pages/HomePage';
 import CatalogPage from './pages/CatalogPage';
 import ProductPage from './pages/ProductPage';
@@ -67,7 +68,11 @@ const HashRedirect: React.FC = () => {
 const MainArea: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { pathname } = useLocation();
   const isHome = pathname === '/';
-  return <main className={`flex-grow ${isHome ? '' : 'pt-[140px] md:pt-[118px]'}`}>{children}</main>;
+  return (
+    <main className={`flex-grow ${isHome ? '' : 'pt-[140px] md:pt-[118px]'}`}>
+      <ErrorBoundary key={pathname}>{children}</ErrorBoundary>
+    </main>
+  );
 };
 
 const App: React.FC = () => {

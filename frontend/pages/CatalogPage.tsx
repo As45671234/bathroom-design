@@ -42,6 +42,24 @@ const DUPLICATE_ATTR_KEY_PATTERN = /^(color|цвет|brand|бренд|collection
  *  availableAttrs below) surfaces what's actually common in the current view. */
 const MAX_ATTR_FILTER_GROUPS = 8;
 
+type CatalogDerived = {
+  categoryProducts: Product[];
+  availableColors: string[];
+  allCatalogBrands: string[];
+  availableCollections: string[];
+  availableAttrs: Record<string, string[]>;
+  colorCounts: Map<string, number>;
+  brandCounts: Map<string, number>;
+  collectionCounts: Map<string, number>;
+  attrValueCounts: Map<string, Map<string, number>>;
+};
+
+/** Survives this component unmounting (e.g. navigating to a product and back),
+ *  unlike a useMemo cache — see the `derived` useMemo below for why that
+ *  matters. Keyed by the `categories` array identity so a catalog refetch
+ *  (new array) naturally starts a fresh cache. */
+const catalogDerivedCache = new WeakMap<Category[], Map<string, CatalogDerived>>();
+
 interface FilterGroupProps {
   title: string;
   count: number;
@@ -330,101 +348,124 @@ const CatalogPage: React.FC<CatalogPageProps> = ({ categories, catalogStatus, on
     : undefined;
   const q = searchQuery.trim().toLowerCase();
 
-  const categoryProducts = useMemo(
-    () =>
-      isAllMode
-        ? categories.flatMap((c) => c.items)
-        : categories.filter((c) => selectedCatIds.includes(c.id)).flatMap((c) => c.items),
-    [categories, isAllMode, selectedCatIds]
-  );
-  const allProductsCount = categories.reduce((sum, c) => sum + c.items.length, 0);
+  // Filtering/counting ~2600 products (and every free-form attr on each of
+  // them) is real CPU work, and it used to redo from scratch on every mount -
+  // including the extremely common hop of opening a product card and hitting
+  // the browser's back button, which unmounts and remounts this whole page.
+  // `categories` keeps the same array identity for the life of a catalog
+  // fetch (see App.tsx), so caching the derived bundle per (categories,
+  // selected-category-set) turns that repeat visit into an instant cache hit
+  // instead of a multi-hundred-ms recompute that made navigation feel stuck.
+  const derived = useMemo<CatalogDerived>(() => {
+    let byCatKey = catalogDerivedCache.get(categories);
+    if (!byCatKey) {
+      byCatKey = new Map();
+      catalogDerivedCache.set(categories, byCatKey);
+    }
+    const cached = byCatKey.get(catKey);
+    if (cached) return cached;
 
-  const availableColors: string[] = useMemo(
-    () => dedupeByNormalized(categoryProducts.map((p) => getProductColor(p))),
-    [categoryProducts]
-  );
+    const categoryProducts = isAllMode
+      ? categories.flatMap((c) => c.items)
+      : categories.filter((c) => selectedCatIds.includes(c.id)).flatMap((c) => c.items);
 
-  // Brands are listed catalog-wide rather than per-category: most categories
-  // carry only one brand, so a per-category list looked like the filter was
-  // broken. Brands absent from the current category render muted with a 0 and
-  // jump to the all-categories view when clicked (see selectBrandAcrossCatalog).
-  const allCatalogBrands: string[] = useMemo(
-    () =>
-      categories
-        .flatMap((c) => c.items)
-        .map((p) => (p.brand || '').trim())
-        .filter((brand, idx, arr): brand is string => Boolean(brand) && arr.indexOf(brand) === idx)
-        .sort((a, b) => a.localeCompare(b, 'ru')),
-    [categories]
-  );
+    const availableColors = dedupeByNormalized(categoryProducts.map((p) => getProductColor(p)));
 
-  const availableCollections: string[] = useMemo(
-    () => dedupeByNormalized(categoryProducts.map((p) => p.collection || '')),
-    [categoryProducts]
-  );
+    // Brands are listed catalog-wide rather than per-category: most categories
+    // carry only one brand, so a per-category list looked like the filter was
+    // broken. Brands absent from the current category render muted with a 0
+    // and jump to the all-categories view when clicked (selectBrandAcrossCatalog).
+    const allCatalogBrands = categories
+      .flatMap((c) => c.items)
+      .map((p) => (p.brand || '').trim())
+      .filter((brand, idx, arr): brand is string => Boolean(brand) && arr.indexOf(brand) === idx)
+      .sort((a, b) => a.localeCompare(b, 'ru'));
 
-  // Generic filters built from each product's free-form `attrs` (material, size,
-  // etc.) — skip the color/цвет key since it already has its own dedicated
-  // section above, skip logistics/import noise (BLOCKED_ATTR_PATTERN), skip
-  // keys that are effectively unique-per-product, and cap the total number
-  // of groups to the ones filled in on the most products in the current view
-  // (MAX_ATTR_FILTER_GROUPS) rather than dumping every spec field the Excel
-  // import happened to carry.
-  const availableAttrs: Record<string, string[]> = useMemo(() => {
-    const map: Record<string, string[]> = {};
+    const availableCollections = dedupeByNormalized(categoryProducts.map((p) => p.collection || ''));
+
+    // Generic filters built from each product's free-form `attrs` (material,
+    // size, etc.) — skip the color/цвет key since it already has its own
+    // dedicated section above, skip logistics/import noise
+    // (BLOCKED_ATTR_PATTERN), skip keys that are effectively unique-per-product,
+    // and cap the total number of groups to the ones filled in on the most
+    // products in the current view (MAX_ATTR_FILTER_GROUPS).
+    const attrMap: Record<string, string[]> = {};
     for (const p of categoryProducts) {
       for (const [key, value] of normalizeAttrEntries(p.attrs || {})) {
         const trimmedKey = key.trim();
         if (DUPLICATE_ATTR_KEY_PATTERN.test(trimmedKey)) continue;
         if (BLOCKED_ATTR_PATTERN.test(trimmedKey)) continue;
-        (map[key] ||= []).push(value);
+        (attrMap[key] ||= []).push(value);
       }
     }
-    const result: Record<string, string[]> = {};
-    Object.entries(map)
+    const availableAttrs: Record<string, string[]> = {};
+    Object.entries(attrMap)
       .map(([key, raw]) => ({ key, values: dedupeByNormalized(raw), coverage: raw.length }))
       .filter(({ values }) => values.length > 1 && values.length <= 25)
       .sort((a, b) => b.coverage - a.coverage)
       .slice(0, MAX_ATTR_FILTER_GROUPS)
       .forEach(({ key, values }) => {
-        result[key] = values;
+        availableAttrs[key] = values;
       });
-    return result;
-  }, [categoryProducts]);
 
-  // Per-option counts for the filter checkboxes below. Building these as a
-  // single pass over categoryProducts (instead of each FilterRow doing its
-  // own categoryProducts.filter(...).length) keeps rendering the filter
-  // sidebar O(products + options) instead of O(products * options).
-  const { colorCounts, brandCounts, collectionCounts, attrValueCounts } = useMemo(() => {
-    const colors = new Map<string, number>();
-    const brands = new Map<string, number>();
-    const collections = new Map<string, number>();
-    const attrs = new Map<string, Map<string, number>>();
+    // Per-option counts for the filter checkboxes below. Building these as a
+    // single pass over categoryProducts (instead of each FilterRow doing its
+    // own categoryProducts.filter(...).length) keeps rendering the filter
+    // sidebar O(products + options) instead of O(products * options).
+    const colorCounts = new Map<string, number>();
+    const brandCounts = new Map<string, number>();
+    const collectionCounts = new Map<string, number>();
+    const attrValueCounts = new Map<string, Map<string, number>>();
     for (const p of categoryProducts) {
       const colorKey = normalizeValue(getProductColor(p));
-      colors.set(colorKey, (colors.get(colorKey) || 0) + 1);
+      colorCounts.set(colorKey, (colorCounts.get(colorKey) || 0) + 1);
 
       const brand = (p.brand || '').trim();
-      if (brand) brands.set(brand, (brands.get(brand) || 0) + 1);
+      if (brand) brandCounts.set(brand, (brandCounts.get(brand) || 0) + 1);
 
       const collectionKey = normalizeValue(p.collection || '');
-      collections.set(collectionKey, (collections.get(collectionKey) || 0) + 1);
+      collectionCounts.set(collectionKey, (collectionCounts.get(collectionKey) || 0) + 1);
 
       for (const [key, value] of normalizeAttrEntries(p.attrs || {})) {
         const trimmedKey = key.trim();
         if (DUPLICATE_ATTR_KEY_PATTERN.test(trimmedKey) || BLOCKED_ATTR_PATTERN.test(trimmedKey)) continue;
         const valueKey = normalizeValue(value);
-        let valueMap = attrs.get(key);
+        let valueMap = attrValueCounts.get(key);
         if (!valueMap) {
           valueMap = new Map<string, number>();
-          attrs.set(key, valueMap);
+          attrValueCounts.set(key, valueMap);
         }
         valueMap.set(valueKey, (valueMap.get(valueKey) || 0) + 1);
       }
     }
-    return { colorCounts: colors, brandCounts: brands, collectionCounts: collections, attrValueCounts: attrs };
-  }, [categoryProducts]);
+
+    const bundle: CatalogDerived = {
+      categoryProducts,
+      availableColors,
+      allCatalogBrands,
+      availableCollections,
+      availableAttrs,
+      colorCounts,
+      brandCounts,
+      collectionCounts,
+      attrValueCounts,
+    };
+    byCatKey.set(catKey, bundle);
+    return bundle;
+  }, [categories, catKey, isAllMode, selectedCatIds]);
+
+  const {
+    categoryProducts,
+    availableColors,
+    allCatalogBrands,
+    availableCollections,
+    availableAttrs,
+    colorCounts,
+    brandCounts,
+    collectionCounts,
+    attrValueCounts,
+  } = derived;
+  const allProductsCount = categories.reduce((sum, c) => sum + c.items.length, 0);
 
   const colorCountInCategory = (color: string) => colorCounts.get(normalizeValue(color)) || 0;
   const brandCountInCategory = (brand: string) => brandCounts.get(brand) || 0;
@@ -445,7 +486,7 @@ const CatalogPage: React.FC<CatalogPageProps> = ({ categories, catalogStatus, on
   const visibleCollections = availableCollections.filter((c) => matchesFilterQuery(c, 'коллекция'));
   const visibleColors = availableColors.filter((c) => matchesFilterQuery(c, 'цвет'));
   const visibleAttrs: Record<string, string[]> = Object.fromEntries(
-    Object.entries(availableAttrs)
+    Object.entries<string[]>(availableAttrs)
       .map(([key, values]) => [
         key,
         matchesFilterQuery(key) ? values : values.filter((v) => matchesFilterQuery(v)),
