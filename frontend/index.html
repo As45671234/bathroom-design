@@ -19,7 +19,10 @@
     <meta name="theme-color" content="#1D2B49">
     <!-- TODO: replace with the real production domain before launch -->
     <link rel="canonical" href="https://bathroomdesign.kz/">
-    <link rel="icon" type="image/png" href="/favicon.png">
+    <!-- Browsers cache favicons per-origin very aggressively (survives normal
+         hard-refresh) - bump this query string whenever favicon.png changes
+         so it's actually treated as a new URL and re-fetched. -->
+    <link rel="icon" type="image/png" href="/favicon.png?v=2">
     <!-- GSC: замените эту строку на <meta name="google-site-verification" content="ВАШ_КОД"> после верификации в Search Console -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
