@@ -143,6 +143,38 @@ export async function adminDeleteProduct(token: string, id: string) {
   });
 }
 
+export async function adminBulkDeleteProducts(token: string, ids: string[]) {
+  return request<{ ok: boolean; deleted: number }>(`/api/admin/products/bulk-delete`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function adminBulkUpdateProducts(token: string, ids: string[], patch: any) {
+  return request<{ ok: boolean; matched: number; modified: number }>(`/api/admin/products/bulk-update`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ ids, patch }),
+  });
+}
+
+export async function adminMergeCategories(token: string, sourceId: string, targetId: string) {
+  return request<{ ok: boolean; movedProducts: number; deletedMeta: number }>(`/api/admin/categories/merge`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ sourceId, targetId }),
+  });
+}
+
+export async function adminRenameSubcategory(token: string, categoryId: string, from: string, to: string) {
+  return request<{ ok: boolean; modified: number }>(`/api/admin/subcategories/rename`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ category_id: categoryId, from, to }),
+  });
+}
+
 export async function adminCreateProduct(token: string, body: any) {
   return request<{ product: any }>(`/api/admin/products`, {
     method: 'POST',

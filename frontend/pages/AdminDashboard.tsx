@@ -10,6 +10,7 @@ import {
   adminUploadImage, adminUploadCategoryVideo, adminFetchCategories,
   adminCountProductsWithoutPhoto, adminDeleteProductsWithoutPhoto,
   adminFetchDesigners, adminCreateDesigner, adminPatchDesigner, adminDeleteDesigner,
+  adminBulkDeleteProducts, adminBulkUpdateProducts, adminMergeCategories, adminRenameSubcategory,
 } from '../services/api';
 import { normalizeAssetUrl } from '../utils/assetUrl';
 
@@ -138,6 +139,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
   const [invPage, setInvPage] = useState(1);
   const INV_PAGE_SIZE = 30;
 
+  // Inventory filters + bulk selection
+  const [invBrandFilter, setInvBrandFilter] = useState('');
+  const [invCategoryFilter, setInvCategoryFilter] = useState('');
+  const [invSubcategoryFilter, setInvSubcategoryFilter] = useState('');
+  const [invStockFilter, setInvStockFilter] = useState<'' | 'in' | 'out'>('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkWorking, setIsBulkWorking] = useState(false);
+  const [showBulkCategoryPicker, setShowBulkCategoryPicker] = useState(false);
+  const [showBulkBrandPicker, setShowBulkBrandPicker] = useState(false);
+  const [bulkCategoryTarget, setBulkCategoryTarget] = useState('');
+  const [bulkBrandValue, setBulkBrandValue] = useState('');
+
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editId, setEditId] = useState('');
@@ -166,6 +179,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
   const [categoryDeleting, setCategoryDeleting] = useState<Record<string, boolean>>({});
   const [categoryVideoUploading, setCategoryVideoUploading] = useState<Record<string, boolean>>({});
   const [categoryImageUploading, setCategoryImageUploading] = useState<Record<string, boolean>>({});
+  const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
+  const [isMerging, setIsMerging] = useState<Record<string, boolean>>({});
+  const [subcategoryDrafts, setSubcategoryDrafts] = useState<Record<string, string>>({});
+  const [subcategorySaving, setSubcategorySaving] = useState<Record<string, boolean>>({});
 
   // Designers tab
   const [designers, setDesigners] = useState<any[]>([]);
@@ -268,7 +285,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
   useEffect(() => { if (activeTab === 'orders') loadOrders(ordersPage); }, [activeTab, ordersPage, ordersStatus]);
   useEffect(() => { if (activeTab === 'leads') loadLeads(leadsPage); }, [activeTab, leadsPage, leadsStatus]);
   useEffect(() => { if (activeTab === 'designers' && !designersLoaded) loadDesigners(); }, [activeTab, designersLoaded]);
-  useEffect(() => { setInvPage(1); }, [searchTerm]);
+  useEffect(() => { setInvPage(1); }, [searchTerm, invBrandFilter, invCategoryFilter, invSubcategoryFilter, invStockFilter]);
+  useEffect(() => { setInvSubcategoryFilter(''); }, [invCategoryFilter]);
 
   useEffect(() => {
     setCategoryDrafts((prev) => {
@@ -477,6 +495,81 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
     }
   };
 
+  // ---------------- Bulk selection & actions ----------------
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const bulkDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Удалить выбранные товары (${selectedIds.size} шт.) навсегда?`)) return;
+    setIsBulkWorking(true);
+    try {
+      const result = await adminBulkDeleteProducts(token, Array.from(selectedIds));
+      clearSelection();
+      await refreshAll();
+      alert(`Удалено товаров: ${result.deleted}`);
+    } catch (e: any) {
+      alert(e?.message || 'Ошибка массового удаления');
+    } finally {
+      setIsBulkWorking(false);
+    }
+  };
+
+  const bulkChangeCategory = async () => {
+    if (selectedIds.size === 0 || !bulkCategoryTarget) return;
+    const targetCat = adminCategories.find((c: any) => String(c.id) === bulkCategoryTarget);
+    if (!targetCat) return;
+    setIsBulkWorking(true);
+    try {
+      await adminBulkUpdateProducts(token, Array.from(selectedIds), { category_id: targetCat.id, category_title: targetCat.title });
+      clearSelection();
+      setShowBulkCategoryPicker(false);
+      setBulkCategoryTarget('');
+      await refreshAll();
+    } catch (e: any) {
+      alert(e?.message || 'Ошибка массового изменения категории');
+    } finally {
+      setIsBulkWorking(false);
+    }
+  };
+
+  const bulkChangeBrand = async () => {
+    if (selectedIds.size === 0 || !bulkBrandValue.trim()) return;
+    setIsBulkWorking(true);
+    try {
+      await adminBulkUpdateProducts(token, Array.from(selectedIds), { brand: bulkBrandValue.trim() });
+      clearSelection();
+      setShowBulkBrandPicker(false);
+      setBulkBrandValue('');
+      await refreshAll();
+    } catch (e: any) {
+      alert(e?.message || 'Ошибка массового изменения бренда');
+    } finally {
+      setIsBulkWorking(false);
+    }
+  };
+
+  const bulkSetStock = async (inStock: boolean) => {
+    if (selectedIds.size === 0) return;
+    setIsBulkWorking(true);
+    try {
+      await adminBulkUpdateProducts(token, Array.from(selectedIds), { inStock });
+      clearSelection();
+      await refreshAll();
+    } catch (e: any) {
+      alert(e?.message || 'Ошибка массового изменения наличия');
+    } finally {
+      setIsBulkWorking(false);
+    }
+  };
+
   // ---------------- Import ----------------
   const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
   const downloadImportTemplate = async () => {
@@ -574,6 +667,61 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
       alert(e?.message || 'Ошибка загрузки изображения');
     } finally {
       setCategoryImageUploading((p) => ({ ...p, [catId]: false }));
+    }
+  };
+
+  const mergeCategoryInto = async (sourceId: string) => {
+    const targetId = mergeTargets[sourceId];
+    if (!targetId) return;
+    const sourceCat = adminCategories.find((c: any) => String(c.id) === sourceId);
+    const targetCat = adminCategories.find((c: any) => String(c.id) === targetId);
+    if (!window.confirm(`Все товары категории "${sourceCat?.title || sourceId}" будут перенесены в "${targetCat?.title || targetId}", а категория "${sourceCat?.title || sourceId}" будет удалена. Продолжить?`)) return;
+    setIsMerging((p) => ({ ...p, [sourceId]: true }));
+    try {
+      const result = await adminMergeCategories(token, sourceId, targetId);
+      setMergeTargets((p) => ({ ...p, [sourceId]: '' }));
+      await refreshAll();
+      alert(`Перенесено товаров: ${result.movedProducts}`);
+    } catch (e: any) {
+      alert(e?.message || 'Ошибка объединения категорий');
+    } finally {
+      setIsMerging((p) => ({ ...p, [sourceId]: false }));
+    }
+  };
+
+  const renameSubcategory = async (catId: string, from: string, to: string, draftKey: string) => {
+    if (!to || to === from) return;
+    setSubcategorySaving((p) => ({ ...p, [draftKey]: true }));
+    try {
+      await adminRenameSubcategory(token, catId, from, to);
+      setSubcategoryDrafts((p) => {
+        const next = { ...p };
+        delete next[draftKey];
+        return next;
+      });
+      await refreshAll();
+    } catch (e: any) {
+      alert(e?.message || 'Ошибка переименования подкатегории');
+    } finally {
+      setSubcategorySaving((p) => ({ ...p, [draftKey]: false }));
+    }
+  };
+
+  const deleteSubcategory = async (catId: string, from: string, draftKey: string) => {
+    if (!window.confirm(`Удалить подкатегорию "${from}"? Товары останутся, но подкатегория у них будет очищена.`)) return;
+    setSubcategorySaving((p) => ({ ...p, [draftKey]: true }));
+    try {
+      await adminRenameSubcategory(token, catId, from, '');
+      setSubcategoryDrafts((p) => {
+        const next = { ...p };
+        delete next[draftKey];
+        return next;
+      });
+      await refreshAll();
+    } catch (e: any) {
+      alert(e?.message || 'Ошибка удаления подкатегории');
+    } finally {
+      setSubcategorySaving((p) => ({ ...p, [draftKey]: false }));
     }
   };
 
@@ -756,10 +904,58 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
     () => Array.from(new Set(invAll.map((p: any) => String(p?.brand || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ru')),
     [invAll]
   );
-  const invFiltered = invAll.filter((p: any) => String(p?.name || '').toLowerCase().includes(searchTerm.toLowerCase()));
+  const invSubcategoryOptions = useMemo(
+    () => Array.from(new Set(
+      invAll
+        .filter((p: any) => !invCategoryFilter || p.__catId === invCategoryFilter)
+        .map((p: any) => String(p?.subcategory || '').trim())
+        .filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b, 'ru')),
+    [invAll, invCategoryFilter]
+  );
+  const subcategoriesByCategory = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    invAll.forEach((p: any) => {
+      const sc = String(p?.subcategory || '').trim();
+      if (!sc) return;
+      const cid = String(p.__catId || '');
+      if (!map[cid]) map[cid] = [];
+      if (!map[cid].includes(sc)) map[cid].push(sc);
+    });
+    Object.keys(map).forEach((k) => map[k].sort((a, b) => a.localeCompare(b, 'ru')));
+    return map;
+  }, [invAll]);
+  const invFiltered = invAll.filter((p: any) => {
+    if (searchTerm && !String(p?.name || '').toLowerCase().includes(searchTerm.toLowerCase())) return false;
+    if (invBrandFilter && String(p?.brand || '') !== invBrandFilter) return false;
+    if (invCategoryFilter && p.__catId !== invCategoryFilter) return false;
+    if (invSubcategoryFilter && String(p?.subcategory || '') !== invSubcategoryFilter) return false;
+    if (invStockFilter === 'in' && !p.inStock) return false;
+    if (invStockFilter === 'out' && p.inStock) return false;
+    return true;
+  });
   const invTotalPages = Math.max(1, Math.ceil(invFiltered.length / INV_PAGE_SIZE));
   const invPageSafe = Math.min(invPage, invTotalPages);
   const invItems = invFiltered.slice((invPageSafe - 1) * INV_PAGE_SIZE, invPageSafe * INV_PAGE_SIZE);
+  const invPageIds = invItems.map((p) => String(p.id));
+  const allPageSelected = invPageIds.length > 0 && invPageIds.every((id) => selectedIds.has(id));
+  const toggleSelectPage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) invPageIds.forEach((id) => next.delete(id));
+      else invPageIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+  const selectAllFiltered = () => setSelectedIds(new Set(invFiltered.map((p: any) => String(p.id))));
+  const hasActiveInvFilters = !!(searchTerm || invBrandFilter || invCategoryFilter || invSubcategoryFilter || invStockFilter);
+  const clearInvFilters = () => {
+    setSearchTerm('');
+    setInvBrandFilter('');
+    setInvCategoryFilter('');
+    setInvSubcategoryFilter('');
+    setInvStockFilter('');
+  };
 
   const tabBtn = (tab: Tab, icon: string, label: string) => (
     <button
@@ -804,7 +1000,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
       <div className="bg-white rounded-[32px] shadow-xl border border-gray-100 overflow-hidden">
         {activeTab === 'inventory' && (
           <div className="p-8">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
               <div className="relative w-full sm:w-96">
                 <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
                 <input
@@ -830,6 +1026,80 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
               </div>
             </div>
 
+            <div className="flex flex-wrap items-center gap-3 mb-6">
+              <select className="px-4 py-2.5 rounded-2xl bg-gray-50 border border-gray-200 text-sm" value={invCategoryFilter} onChange={(e) => setInvCategoryFilter(e.target.value)}>
+                <option value="">Все категории</option>
+                {adminCategories.map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+              <select className="px-4 py-2.5 rounded-2xl bg-gray-50 border border-gray-200 text-sm" value={invBrandFilter} onChange={(e) => setInvBrandFilter(e.target.value)}>
+                <option value="">Все бренды</option>
+                {adminBrands.map((b) => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+              <select className="px-4 py-2.5 rounded-2xl bg-gray-50 border border-gray-200 text-sm" value={invSubcategoryFilter} onChange={(e) => setInvSubcategoryFilter(e.target.value)} disabled={invSubcategoryOptions.length === 0}>
+                <option value="">Все подкатегории</option>
+                {invSubcategoryOptions.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <select className="px-4 py-2.5 rounded-2xl bg-gray-50 border border-gray-200 text-sm" value={invStockFilter} onChange={(e) => setInvStockFilter(e.target.value as any)}>
+                <option value="">Любое наличие</option>
+                <option value="in">В наличии</option>
+                <option value="out">Нет в наличии</option>
+              </select>
+              {hasActiveInvFilters ? (
+                <button onClick={clearInvFilters} className="px-4 py-2.5 rounded-2xl text-xs font-bold text-gray-500 hover:text-gray-700 underline">Сбросить фильтры</button>
+              ) : null}
+              <div className="text-xs text-gray-400 ml-auto">Найдено: {invFiltered.length}</div>
+            </div>
+
+            {selectedIds.size > 0 ? (
+              <div className="flex flex-wrap items-center gap-3 mb-6 p-4 rounded-2xl bg-[#1D2B49] text-white">
+                <div className="text-sm font-bold">Выбрано: {selectedIds.size}</div>
+                <button onClick={selectAllFiltered} className="px-3 py-2 rounded-xl bg-white/10 text-xs font-bold hover:bg-white/20">Выбрать все ({invFiltered.length})</button>
+                <button onClick={clearSelection} className="px-3 py-2 rounded-xl bg-white/10 text-xs font-bold hover:bg-white/20">Снять выбор</button>
+                <div className="flex-1" />
+                <div className="relative">
+                  <button onClick={() => { setShowBulkCategoryPicker((v) => !v); setShowBulkBrandPicker(false); }} disabled={isBulkWorking} className="px-4 py-2 rounded-xl bg-white/10 text-xs font-bold hover:bg-white/20 disabled:opacity-40">
+                    <i className="fas fa-folder mr-2"></i>Изменить категорию
+                  </button>
+                  {showBulkCategoryPicker ? (
+                    <div className="absolute right-0 top-full mt-2 bg-white rounded-2xl shadow-xl p-3 w-64 z-20 text-[#1D2B49]">
+                      <select className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 text-sm mb-2" value={bulkCategoryTarget} onChange={(e) => setBulkCategoryTarget(e.target.value)}>
+                        <option value="">Выберите категорию...</option>
+                        {adminCategories.map((c: any) => (
+                          <option key={c.id} value={c.id}>{c.title}</option>
+                        ))}
+                      </select>
+                      <button onClick={bulkChangeCategory} disabled={!bulkCategoryTarget || isBulkWorking} className="w-full px-3 py-2 rounded-xl bg-[#1D2B49] text-white text-xs font-bold disabled:opacity-40">Применить</button>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="relative">
+                  <button onClick={() => { setShowBulkBrandPicker((v) => !v); setShowBulkCategoryPicker(false); }} disabled={isBulkWorking} className="px-4 py-2 rounded-xl bg-white/10 text-xs font-bold hover:bg-white/20 disabled:opacity-40">
+                    <i className="fas fa-tag mr-2"></i>Изменить бренд
+                  </button>
+                  {showBulkBrandPicker ? (
+                    <div className="absolute right-0 top-full mt-2 bg-white rounded-2xl shadow-xl p-3 w-64 z-20 text-[#1D2B49]">
+                      <input list="admin-brand-options" className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 text-sm mb-2" placeholder="Название бренда" value={bulkBrandValue} onChange={(e) => setBulkBrandValue(e.target.value)} />
+                      <datalist id="admin-brand-options">
+                        {adminBrands.map((b) => <option key={b} value={b} />)}
+                      </datalist>
+                      <button onClick={bulkChangeBrand} disabled={!bulkBrandValue.trim() || isBulkWorking} className="w-full px-3 py-2 rounded-xl bg-[#1D2B49] text-white text-xs font-bold disabled:opacity-40">Применить</button>
+                    </div>
+                  ) : null}
+                </div>
+                <button onClick={() => bulkSetStock(true)} disabled={isBulkWorking} className="px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-100 text-xs font-bold hover:bg-emerald-500/30 disabled:opacity-40">В наличии</button>
+                <button onClick={() => bulkSetStock(false)} disabled={isBulkWorking} className="px-4 py-2 rounded-xl bg-orange-500/20 text-orange-100 text-xs font-bold hover:bg-orange-500/30 disabled:opacity-40">Нет в наличии</button>
+                <button onClick={bulkDeleteSelected} disabled={isBulkWorking} className="px-4 py-2 rounded-xl bg-red-500 text-white text-xs font-bold hover:bg-red-600 disabled:opacity-40">
+                  <i className="fas fa-trash mr-2"></i>{isBulkWorking ? 'Выполняется...' : 'Удалить'}
+                </button>
+              </div>
+            ) : null}
+
             {invItems.length === 0 ? (
               <div className="p-16 text-center bg-gray-50 rounded-3xl border border-gray-100 text-gray-400">Товаров пока нет</div>
             ) : (
@@ -837,6 +1107,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
                 <table className="w-full text-left">
                   <thead>
                     <tr className="text-xs uppercase tracking-widest text-gray-500">
+                      <th className="py-3 px-2 w-10">
+                        <input type="checkbox" checked={allPageSelected} onChange={toggleSelectPage} className="accent-[#1D2B49] w-4 h-4" />
+                      </th>
                       <th className="py-3 px-2">Товар</th>
                       <th className="py-3 px-2">Категория</th>
                       <th className="py-3 px-2">Бренд</th>
@@ -847,8 +1120,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
                   </thead>
                   <tbody>
                     {invItems.map((p) => (
-                      <tr key={p.id} className="border-t border-gray-100">
-                        <td className="py-3 px-2 font-bold text-[#1D2B49]">{p.name}<div className="text-xs text-gray-400 font-normal">{p.sku}</div></td>
+                      <tr key={p.id} className={`border-t border-gray-100 ${selectedIds.has(String(p.id)) ? 'bg-blue-50/40' : ''}`}>
+                        <td className="py-3 px-2">
+                          <input type="checkbox" checked={selectedIds.has(String(p.id))} onChange={() => toggleSelectOne(String(p.id))} className="accent-[#1D2B49] w-4 h-4" />
+                        </td>
+                        <td className="py-3 px-2 font-bold text-[#1D2B49]">{p.name}<div className="text-xs text-gray-400 font-normal">{p.sku}{p.subcategory ? ` · ${p.subcategory}` : ''}</div></td>
                         <td className="py-3 px-2 text-sm text-gray-600">{p.__catTitle}</td>
                         <td className="py-3 px-2 text-sm text-gray-600">{p.brand}</td>
                         <td className="py-3 px-2 text-sm font-bold text-gray-800">{p.prices?.retail ? `${Number(p.prices.retail).toLocaleString('ru-RU')} ₸` : '-'}</td>
@@ -1246,6 +1522,67 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
                             {isDeleting ? 'Удаление...' : 'Удалить'}
                           </button>
                         </div>
+
+                        <div className="border-t border-gray-100 pt-3">
+                          <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Объединить с другой категорией</div>
+                          <div className="flex gap-2">
+                            <select
+                              className="flex-1 px-3 py-2.5 rounded-2xl bg-white border border-gray-200 text-xs"
+                              value={mergeTargets[catId] || ''}
+                              onChange={(e) => setMergeTargets((p) => ({ ...p, [catId]: e.target.value }))}
+                            >
+                              <option value="">Выберите категорию...</option>
+                              {adminCategories.filter((c: any) => String(c.id) !== catId).map((c: any) => (
+                                <option key={c.id} value={c.id}>{c.title}</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => mergeCategoryInto(catId)}
+                              disabled={!mergeTargets[catId] || !!isMerging[catId]}
+                              className="px-4 py-2.5 rounded-2xl bg-amber-50 text-amber-700 font-black text-xs uppercase hover:bg-amber-100 disabled:opacity-40"
+                            >
+                              {isMerging[catId] ? '...' : 'Объединить'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {(subcategoriesByCategory[catId]?.length ?? 0) > 0 ? (
+                          <div className="border-t border-gray-100 pt-3 space-y-2">
+                            <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Подкатегории</div>
+                            {subcategoriesByCategory[catId].map((sc) => {
+                              const draftKey = `${catId}::${sc}`;
+                              const value = subcategoryDrafts[draftKey] ?? sc;
+                              const isSaving2 = !!subcategorySaving[draftKey];
+                              return (
+                                <div key={draftKey} className="flex gap-2 items-center">
+                                  <input
+                                    className="flex-1 px-3 py-2 rounded-2xl bg-white border border-gray-200 text-xs"
+                                    value={value}
+                                    onChange={(e) => setSubcategoryDrafts((p) => ({ ...p, [draftKey]: e.target.value }))}
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={isSaving2 || !value.trim() || value.trim() === sc}
+                                    onClick={() => renameSubcategory(catId, sc, value.trim(), draftKey)}
+                                    className="px-3 py-2 rounded-2xl bg-gray-100 text-gray-700 font-bold text-xs disabled:opacity-40"
+                                  >
+                                    {isSaving2 ? '...' : 'Сохранить'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isSaving2}
+                                    onClick={() => deleteSubcategory(catId, sc, draftKey)}
+                                    className="px-3 py-2 rounded-2xl bg-red-50 text-red-600 font-bold text-xs disabled:opacity-40"
+                                  >
+                                    Удалить
+                                  </button>
+                                </div>
+                              );
+                            })}
+                            <p className="text-[11px] text-gray-400">Чтобы объединить подкатегории — переименуйте одну в точное название другой.</p>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   );

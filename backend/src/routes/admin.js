@@ -501,6 +501,43 @@ router.post("/categories", requireAdmin, async (req, res) => {
   });
 });
 
+router.post("/categories/merge", requireAdmin, async (req, res) => {
+  const sourceId = String(req.body?.sourceId || "").trim();
+  const targetId = String(req.body?.targetId || "").trim();
+  if (!sourceId || !targetId) return res.status(400).json({ error: "sourceId and targetId required" });
+  if (sourceId === targetId) return res.status(400).json({ error: "sourceId and targetId must differ" });
+
+  const targetMeta = await CategoryMeta.findOne({ category_id: targetId }).lean();
+  const targetTitle = String(targetMeta?.title || targetId);
+
+  const productsResult = await Product.updateMany(
+    { category_id: sourceId },
+    { $set: { category_id: targetId, category_title: targetTitle } }
+  );
+  const metaResult = await CategoryMeta.deleteOne({ category_id: sourceId });
+
+  res.json({
+    ok: true,
+    movedProducts: Number(productsResult?.modifiedCount || 0),
+    deletedMeta: Number(metaResult?.deletedCount || 0)
+  });
+});
+
+router.post("/subcategories/rename", requireAdmin, async (req, res) => {
+  const categoryId = String(req.body?.category_id || "").trim();
+  const from = String(req.body?.from || "").trim();
+  const to = String(req.body?.to || "").trim();
+  if (!categoryId || !from) return res.status(400).json({ error: "category_id and from are required" });
+  if (to === from) return res.status(400).json({ error: "to must differ from from" });
+
+  const result = await Product.updateMany(
+    { category_id: categoryId, subcategory: from },
+    { $set: { subcategory: to } }
+  );
+
+  res.json({ ok: true, modified: Number(result?.modifiedCount || 0) });
+});
+
 router.delete("/categories/:id", requireAdmin, async (req, res) => {
   const id = String(req.params.id || "").trim();
   if (!id) return res.status(400).json({ error: "category id required" });
@@ -923,6 +960,35 @@ router.delete("/products/:id", requireAdmin, async (req, res) => {
   if (!p) return res.status(404).json({ error: "not found" });
   await p.deleteOne();
   res.json({ ok: true });
+});
+
+router.post("/products/bulk-delete", requireAdmin, async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x) => String(x || "").trim()).filter(Boolean) : [];
+  if (!ids.length) return res.status(400).json({ error: "ids required" });
+
+  const result = await Product.deleteMany({ _id: { $in: ids } });
+  res.json({ ok: true, deleted: Number(result?.deletedCount || 0) });
+});
+
+router.post("/products/bulk-update", requireAdmin, async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x) => String(x || "").trim()).filter(Boolean) : [];
+  const patch = req.body?.patch || {};
+  if (!ids.length) return res.status(400).json({ error: "ids required" });
+
+  const update = {};
+  if (patch.category_id !== undefined) update.category_id = String(patch.category_id);
+  if (patch.category_title !== undefined) update.category_title = String(patch.category_title);
+  if (patch.brand !== undefined) update.brand = String(patch.brand);
+  if (patch.subcategory !== undefined) update.subcategory = String(patch.subcategory);
+  if (patch.collection !== undefined) update.collection = String(patch.collection);
+  if (patch.unit !== undefined) update.unit = String(patch.unit);
+  if (patch.inStock !== undefined) update.inStock = !!patch.inStock;
+  if (patch.active !== undefined) update.active = !!patch.active;
+
+  if (!Object.keys(update).length) return res.status(400).json({ error: "no fields to update" });
+
+  const result = await Product.updateMany({ _id: { $in: ids } }, { $set: update });
+  res.json({ ok: true, matched: Number(result?.matchedCount || 0), modified: Number(result?.modifiedCount || 0) });
 });
 
 // --------------------
