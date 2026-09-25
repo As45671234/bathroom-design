@@ -640,6 +640,18 @@ const CatalogPage: React.FC<CatalogPageProps> = ({ categories, catalogStatus, on
     const categoryUrl = activeCategory
       ? `https://bathroomdesign.kz/catalog?cat=${encodeURIComponent(activeCategory.id)}`
       : 'https://bathroomdesign.kz/catalog';
+
+    // Mirrors the visual breadcrumb nav rendered below.
+    const breadcrumbItems = [
+      { name: 'Главная', item: 'https://bathroomdesign.kz/' },
+      ...(isAllMode
+        ? [{ name: 'Каталог', item: 'https://bathroomdesign.kz/catalog' }]
+        : [
+            { name: 'Каталог', item: 'https://bathroomdesign.kz/catalog?cat=all' },
+            { name: categoryTitle, item: categoryUrl },
+          ]),
+    ];
+
     return applySeo({
       title: formatSeoValue(activeCategory?.seoTitle) || `${categoryTitle} | Каталог Bathroom Design`,
       description: formatSeoValue(activeCategory?.seoDescription) ||
@@ -651,6 +663,16 @@ const CatalogPage: React.FC<CatalogPageProps> = ({ categories, catalogStatus, on
       ogUrl: categoryUrl,
       ogType: 'website',
       twitterCard: 'summary_large_image',
+      structuredData: {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: breadcrumbItems.map((b, idx) => ({
+          '@type': 'ListItem',
+          position: idx + 1,
+          name: b.name,
+          item: b.item,
+        })),
+      },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCategory, isAllMode, catKey, filteredProducts.length]);

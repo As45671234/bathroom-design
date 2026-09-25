@@ -104,6 +104,16 @@ const ProductPage: React.FC<ProductPageProps> = ({
     const url = `${SITE_URL}${productPath(product)}`;
     const image = images[0] ? new URL(images[0], window.location.origin).href : undefined;
 
+    // Mirrors the visual breadcrumb nav above exactly (Главная / Каталог /
+    // [категория] / название) so the rich-result trail Google/Yandex show
+    // never disagrees with what's actually on the page.
+    const breadcrumbItems = [
+      { name: 'Главная', item: SITE_URL },
+      { name: 'Каталог', item: `${SITE_URL}/catalog` },
+      ...(category ? [{ name: category.title, item: `${SITE_URL}/catalog?cat=${category.id}` }] : []),
+      { name: product.name, item: url },
+    ];
+
     return applySeo({
       title: `${product.name} — купить в Алматы | Bathroom Design`,
       description:
@@ -114,26 +124,38 @@ const ProductPage: React.FC<ProductPageProps> = ({
       ogType: 'product',
       ogImage: image,
       twitterCard: 'summary_large_image',
-      structuredData: {
-        '@context': 'https://schema.org',
-        '@type': 'Product',
-        name: product.name,
-        sku: product.sku || undefined,
-        brand: product.brand ? { '@type': 'Brand', name: product.brand } : undefined,
-        image: image ? [image] : undefined,
-        description: product.description || undefined,
-        offers: product.prices.retail
-          ? {
-              '@type': 'Offer',
-              price: product.prices.retail,
-              priceCurrency: 'KZT',
-              url,
-              availability: product.inStock
-                ? 'https://schema.org/InStock'
-                : 'https://schema.org/PreOrder',
-            }
-          : undefined,
-      },
+      structuredData: [
+        {
+          '@context': 'https://schema.org',
+          '@type': 'Product',
+          name: product.name,
+          sku: product.sku || undefined,
+          brand: product.brand ? { '@type': 'Brand', name: product.brand } : undefined,
+          image: image ? [image] : undefined,
+          description: product.description || undefined,
+          offers: product.prices.retail
+            ? {
+                '@type': 'Offer',
+                price: product.prices.retail,
+                priceCurrency: 'KZT',
+                url,
+                availability: product.inStock
+                  ? 'https://schema.org/InStock'
+                  : 'https://schema.org/PreOrder',
+              }
+            : undefined,
+        },
+        {
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: breadcrumbItems.map((b, idx) => ({
+            '@type': 'ListItem',
+            position: idx + 1,
+            name: b.name,
+            item: b.item,
+          })),
+        },
+      ],
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product, category]);

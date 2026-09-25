@@ -52,27 +52,40 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 app.get("/robots.txt", (req, res) => {
   res.type("text/plain");
   res.send(
-    "User-agent: *\nAllow: /\nDisallow: /admin\n\nSitemap: https://bathroomdesign.kz/sitemap.xml"
+    // /cart is per-session/empty-by-default and /visual-search is an upload
+    // tool with no indexable content - both are pure crawl-budget waste, and
+    // /admin obviously shouldn't be crawlable at all.
+    "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /cart\nDisallow: /visual-search\n\nSitemap: https://bathroomdesign.kz/sitemap.xml"
   );
 });
 
 app.get("/sitemap.xml", async (req, res) => {
   try {
     const metas = await CategoryMeta.find({}).lean();
-    const products = await Product.find({ active: true, inStock: true }).select("_id").lean();
+    // Product pages moved from the old catalog modal (?product=<id>) to a
+    // real route (/product/:id) - CatalogPage.tsx now only does a client-side
+    // JS redirect for old links found in the wild. Listing /product/:id
+    // directly here matters a lot for Yandex specifically: unlike Googlebot,
+    // Yandex's crawler is much less reliable at executing JS redirects, so a
+    // sitemap full of ?product= links risked those pages never getting
+    // indexed under their real URL.
+    const products = await Product.find({ active: true, inStock: true }).select("_id updatedAt").lean();
     const baseUrl = "https://bathroomdesign.kz";
     const today = new Date().toISOString().slice(0, 10);
+    const lastmodOf = (doc) => (doc.updatedAt ? new Date(doc.updatedAt).toISOString().slice(0, 10) : today);
 
     const urls = [
-      { loc: `${baseUrl}/`, changefreq: "weekly", priority: "1.0" },
-      { loc: `${baseUrl}/catalog`, changefreq: "daily", priority: "0.9" },
+      { loc: `${baseUrl}/`, lastmod: today, changefreq: "weekly", priority: "1.0" },
+      { loc: `${baseUrl}/catalog`, lastmod: today, changefreq: "daily", priority: "0.9" },
       ...metas.map((m) => ({
         loc: `${baseUrl}/catalog?cat=${encodeURIComponent(m.category_id)}`,
+        lastmod: lastmodOf(m),
         changefreq: "weekly",
         priority: "0.8"
       })),
       ...products.map((p) => ({
-        loc: `${baseUrl}/catalog?product=${encodeURIComponent(String(p._id))}`,
+        loc: `${baseUrl}/product/${encodeURIComponent(String(p._id))}`,
+        lastmod: lastmodOf(p),
         changefreq: "weekly",
         priority: "0.6"
       }))
@@ -82,7 +95,7 @@ app.get("/sitemap.xml", async (req, res) => {
       '<?xml version="1.0" encoding="UTF-8"?>',
       '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
       ...urls.map((u) =>
-        `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
+        `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${u.lastmod}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
       ),
       "</urlset>"
     ].join("\n");
