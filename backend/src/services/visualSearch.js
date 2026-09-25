@@ -179,6 +179,18 @@ async function postWithRetry(label, url, options) {
 // not catch "полотенцесушитель" - heated towel rails are a real product line.
 const EXCLUDED_COMPONENT = /вешалк|полотенцедержат|держател\S*\s+(?:для\s+)?полотен/i;
 
+// A photo shows the whole fixture, but the catalog also lists its individual
+// spare parts/accessories as separate products (toilet seat, tank, mounting
+// kit) under the same category - e.g. "Крышка-сиденье для унитаза" and
+// "Крепежный комплект для подвесного унитаза" both live in "керамика"
+// alongside the actual "Чаша подвесного унитаза". These often score just as
+// high or higher than the real fixture (a lid's whole name is basically the
+// keyword "унитаз" + "крышка"), so a photo of a toilet returned a mounting
+// bracket ahead of any toilet. Filtered out before scoring rather than
+// down-weighted, since no photo-driven search should ever surface a spare
+// part as "the product in this photo".
+const SPARE_PART_PRODUCT = /^(крышка-сиденье|сиденье для|бачок для|сливной бачок|крепежный комплект|монтажный комплект|ремкомплект|комплект (для|крепления))/i;
+
 function parseComponents(text) {
   if (!text) return { components: [] };
   try {
@@ -369,8 +381,8 @@ const KEY_ATTRS = new Set([
 // mentioned "хром" once scored identically. Matching whole words, weighting
 // by field, and rewarding an exact field match make the top results
 // noticeably more often the right ones.
-function scoreProduct(product, keywords) {
-  const fields = [
+function scoreProduct(product, keywords, typeKeyword) {
+  const rawFields = [
     { text: product.name, weight: FIELD_WEIGHTS.name },
     { text: product.collection, weight: FIELD_WEIGHTS.collection },
     { text: product.brand, weight: FIELD_WEIGHTS.brand },
@@ -380,8 +392,22 @@ function scoreProduct(product, keywords) {
     }))
   ]
     .map(({ text, weight }) => ({ text: normalizeForMatch(text), weight }))
-    .filter(({ text }) => text)
-    .map((field) => ({ ...field, stems: stemsOf(field.text) }));
+    .filter(({ text }) => text);
+
+  // The supplier data stores color under up to three attr keys at once
+  // ("Цвет", "Название цвета", "color" - see attrs dump on any product), all
+  // holding the same value. Scoring each attr separately meant one matched
+  // color keyword was counted 2-3x over at keyAttr weight, letting color
+  // (and, now that mount has two aliases too) alone drag completely
+  // wrong-type products - a hook, a soap dish - to a score that looked like a
+  // confident match. Collapsing fields that resolve to the identical
+  // normalized text keeps every distinct signal but only once each.
+  const seenText = new Map();
+  for (const field of rawFields) {
+    const existing = seenText.get(field.text);
+    if (!existing || field.weight > existing.weight) seenText.set(field.text, field);
+  }
+  const fields = [...seenText.values()].map((field) => ({ ...field, stems: stemsOf(field.text) }));
 
   let score = 0;
   for (const kw of keywords) {
@@ -399,7 +425,34 @@ function scoreProduct(product, keywords) {
       else if (text.includes(k)) score += weight * 0.3;
     }
   }
-  return score;
+
+  // "унитаз" vs "унитаза", "душевая" vs "душ" - the whole-word/stem matching
+  // above is exact enough for scoring, but too strict to gate on: stemRu only
+  // strips one suffix, so "душевая" reduces to "душев" while the product's
+  // own word "душ" doesn't reduce any further, and they never compare equal
+  // even though they share the same root. A same-root check just needs one
+  // word to be a prefix of the other, which is true for ordinary Russian
+  // inflection regardless of which form is longer.
+  const typeWords = normalizeForMatch(typeKeyword || "").match(/[a-zа-я0-9]+/g)?.filter((w) => w.length >= 3) || [];
+  const fieldWords = fields.flatMap((f) => f.text.match(/[a-zа-я0-9]+/g) || []);
+  const typeMatched =
+    typeWords.length === 0 ||
+    typeWords.some((tw) =>
+      fieldWords.some((fw) => {
+        const [short, long] = tw.length <= fw.length ? [tw, fw] : [fw, tw];
+        return short.length >= 3 && long.startsWith(short);
+      })
+    );
+
+  // Color and mount are shared by huge swaths of a category (half the
+  // catalog is chrome, wall-mounted), so on their own they aren't evidence
+  // this is the same *kind* of object - they inflated a soap dish to a
+  // "confident" match for a photo of a heated towel rail (a product line
+  // this catalog doesn't carry at all). Requiring the component's own noun
+  // ("полотенцесушитель", "унитаз"...) to land somewhere on the product
+  // is what actually asserts "this is that kind of thing"; without it, no
+  // amount of matching secondary attrs should count as a real match.
+  return typeMatched ? score : 0;
 }
 
 async function findMatches({ Product, component, limit = 6 }) {
@@ -410,21 +463,22 @@ async function findMatches({ Product, component, limit = 6 }) {
   // of that category was never even scored - the right item could not win
   // because it was never a candidate. The bound stays only as a guard against a
   // future catalogue that outgrows memory; today it admits every category.
-  const candidates = await Product.find(filter).limit(5000).lean();
+  const candidates = (await Product.find(filter).limit(5000).lean())
+    .filter((p) => !SPARE_PART_PRODUCT.test(p.name || ""));
   const keywords = [...(component.keywords || []), component.type].filter(Boolean);
 
-  const scored = candidates
-    .map((p) => ({ product: p, score: scoreProduct(p, keywords) }))
+  // No "first N of the category regardless" fallback anymore: scoreProduct
+  // now returns 0 whenever the component's own type never matched anything
+  // (see its comment), which is exactly the case where this catalog simply
+  // doesn't carry that product - e.g. a photo of a towel rail, a product
+  // line this store doesn't stock. Showing unrelated category filler there
+  // used to look like a confident answer; showing nothing is the honest one,
+  // and the frontend already has a "not found" state for an empty list.
+  return candidates
+    .map((p) => ({ product: p, score: scoreProduct(p, keywords, component.type) }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
-
-  // Fallback: if nothing scored, still show a few products from the matched category
-  if (scored.length === 0 && component.category_id) {
-    return candidates.slice(0, limit).map((p) => ({ product: p, score: 0 }));
-  }
-
-  return scored;
 }
 
 module.exports = { analyzeImage, findMatches, isConfigured };
