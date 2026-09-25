@@ -197,6 +197,16 @@ const CatalogPage: React.FC<CatalogPageProps> = ({ categories, catalogStatus, on
   // effect below doesn't immediately wipe the filter we just set.
   const skipFilterResetRef = useRef(false);
 
+  // Set when selectedCatIds was just overwritten *from* the URL (see the
+  // effect below), so the URL-sync-writer effect further down doesn't
+  // immediately write it straight back. Without this, a fresh mount whose
+  // URL carries a non-default `cat` (e.g. hitting the browser back button
+  // onto `/catalog?cat=some-category`) starts a tug-of-war: this effect pulls
+  // selectedCatIds from the URL while the writer effect - still holding the
+  // stale pre-mount state from the same render - pushes it right back,
+  // forever, until React throws "Maximum update depth exceeded".
+  const isSyncingCatFromUrlRef = useRef(false);
+
   // Keep the selected categories in sync with the `cat` URL params — this is
   // what makes external links (footer/sitemap category links) work while
   // already on this page, not just on first mount. `cat=all` (or no param at
@@ -205,7 +215,11 @@ const CatalogPage: React.FC<CatalogPageProps> = ({ categories, catalogStatus, on
     if (categories.length === 0) return;
     const raw = searchParams.getAll('cat');
     const resolved = raw.includes('all') ? [] : raw.filter((id) => categories.some((c) => c.id === id));
-    setSelectedCatIds((prev) => (prev.join('|') === resolved.join('|') ? prev : resolved));
+    setSelectedCatIds((prev) => {
+      if (prev.join('|') === resolved.join('|')) return prev;
+      isSyncingCatFromUrlRef.current = true;
+      return resolved;
+    });
   }, [searchParams, categories]);
 
   // Reset the other filters whenever the category selection actually changes
@@ -277,6 +291,10 @@ const CatalogPage: React.FC<CatalogPageProps> = ({ categories, catalogStatus, on
   // empty selection before the categories have loaded.
   useEffect(() => {
     if (categories.length === 0) return;
+    if (isSyncingCatFromUrlRef.current) {
+      isSyncingCatFromUrlRef.current = false;
+      return;
+    }
     const params = new URLSearchParams();
     if (selectedCatIds.length === 0) params.set('cat', 'all');
     else selectedCatIds.forEach((id) => params.append('cat', id));
