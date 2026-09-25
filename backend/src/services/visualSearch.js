@@ -14,6 +14,16 @@ const GEMINI_BASE_URL = (process.env.GEMINI_BASE_URL || "https://generativelangu
 // afterwards.
 const NO_CATEGORY = "none";
 
+// Mount type used to be just one of several free-text `keywords` the model
+// was asked to "remember to include" - it demonstrably skipped it on some
+// photos (a plain counter-standing mixer came back with zero mount keyword,
+// and without one, concealed/wall-mount products tied for the top score with
+// the correct on-counter ones). Making it its own required enum field, same
+// trick as category_id below, means the model has to commit to an answer
+// every time instead of it being an easily-dropped afterthought.
+const MOUNT_TYPES = ["на раковину", "настенный", "встраиваемый", "напольный", "подвесной", "накладная", "врезная"];
+const NO_MOUNT = "none";
+
 // Google geo-blocks the Gemini API for whole countries: from the production
 // server (a KZ datacenter) every call fails with 400 FAILED_PRECONDITION
 // "User location is not supported for the API use.", while the same key works
@@ -60,14 +70,19 @@ function buildComponentSchema(categories) {
               enum: [...categories.map((c) => c.id), NO_CATEGORY],
               description: `id категории из списка, либо "${NO_CATEGORY}" если не подходит ни одна`
             },
+            mount_type: {
+              type: "STRING",
+              enum: [...MOUNT_TYPES, NO_MOUNT],
+              description: `Как установлен компонент, либо "${NO_MOUNT}" если не применимо/не видно`
+            },
             description: { type: "STRING", description: "Краткое описание внешнего вида: форма, цвет/покрытие, стиль" },
             keywords: {
               type: "ARRAY",
               items: { type: "STRING" },
-              description: "3-8 ключевых слов на русском для поиска (цвет, форма, тип монтажа и т.д.)"
+              description: "3-8 ключевых слов на русском для поиска (цвет, форма и т.д.)"
             }
           },
-          required: ["type", "category_id", "description", "keywords"]
+          required: ["type", "category_id", "mount_type", "description", "keywords"]
         }
       }
     },
@@ -89,10 +104,11 @@ function buildGroqSchema(categories) {
           properties: {
             type: { type: "string" },
             category_id: { type: "string", enum: [...categories.map((c) => c.id), NO_CATEGORY] },
+            mount_type: { type: "string", enum: [...MOUNT_TYPES, NO_MOUNT] },
             description: { type: "string" },
             keywords: { type: "array", items: { type: "string" } }
           },
-          required: ["type", "category_id", "description", "keywords"],
+          required: ["type", "category_id", "mount_type", "description", "keywords"],
           additionalProperties: false
         }
       }
@@ -111,15 +127,16 @@ function buildPrompt(categories) {
     categoryList +
     `\n\nЕсли компонент не относится ни к одной категории, укажи category_id: "${NO_CATEGORY}". ` +
     "Не включай элементы, не относящиеся к сантехнике (плитка, мебель, зеркала и т.п.), если они явно не являются частью выбранных категорий.\n\n" +
-    // Mount type is what a person actually points at in a photo and it is a
-    // filterable attribute on almost every product, but the model only
-    // volunteered it sometimes - so a deck-mounted gold tap kept matching
-    // concealed and wall-mounted ones that were gold too. Asking for the term
-    // verbatim gives the scorer something decisive to match on.
     "Не выделяй вешалки и держатели полотенец — их подбирать не нужно, даже если они хорошо видны.\n\n" +
-    "В keywords обязательно включи тип установки, если он виден на фото, используя точную формулировку: " +
-    "«на раковину», «настенный», «встраиваемый», «напольный», «подвесной», «накладная», «врезная». " +
-    "Для смесителя всегда указывай, стоит он на раковине, на стене или встроен в стену.\n\n" +
+    // mount_type is now its own required schema field (see buildComponentSchema)
+    // rather than "please remember to add this to keywords too" - it was
+    // getting dropped on some photos, and a mixer with no mount keyword tied
+    // concealed/wall-mount products with correct on-counter ones for the top
+    // score. Для смесителя это почти всегда легко определяется по фото:
+    // стоит ли корпус на раковине/столешнице, или на фото виден только рычаг
+    // и излив на стене/в стене.
+    "Поле mount_type заполняй всегда, когда тип установки виден на фото - особенно для смесителей: " +
+    "стоит ли корпус на раковине/столешнице, торчит из стены, стоит на полу и т.д.\n\n" +
     // Мало толку от точного цвета и монтажа, если форма/силуэт смесителя
     // выбран неверно - это то, что человек различает на фото первым делом.
     // Каталог хранит эти признаки в атрибутах "Форма", "Линии форм" и
@@ -201,7 +218,8 @@ function parseComponents(text) {
         .filter((c) => !EXCLUDED_COMPONENT.test(`${c.type || ""} ${c.description || ""}`))
         .map((c) => ({
           ...c,
-          category_id: c.category_id && c.category_id !== NO_CATEGORY ? c.category_id : null
+          category_id: c.category_id && c.category_id !== NO_CATEGORY ? c.category_id : null,
+          mount_type: c.mount_type && c.mount_type !== NO_MOUNT ? c.mount_type : null
         }))
     };
   } catch (e) {
@@ -373,6 +391,28 @@ const KEY_ATTRS = new Set([
   "тип излива", "форма излива", "форма", "линии форм", "дизайн"
 ]);
 
+// Mount type is the one attribute where "no bonus for matching" isn't a
+// strong enough signal - a concealed mixer is not a substitute photo match
+// for a counter-standing one, ever, regardless of how well color/shape/brand
+// line up. These groups classify both the model's mount_type answer and the
+// catalog's free-text "Установка"/"Тип монтажа" values into the same small
+// set of mutually exclusive buckets so a genuine conflict between them can be
+// detected and vetoed outright, not just left unrewarded.
+const MOUNT_GROUPS = [
+  { group: "на раковину", re: /раковин|столешниц|мойк/i },
+  { group: "настенный", re: /(?:^|[^а-я])стен/i },
+  { group: "встраиваемый", re: /скрыт|встрое|встраива/i },
+  { group: "напольный", re: /напольн/i },
+  { group: "подвесной", re: /подвесн/i },
+  { group: "накладная", re: /накладн/i },
+  { group: "врезная", re: /врезн/i }
+];
+
+function mountGroupsOf(text) {
+  const t = String(text || "").toLowerCase();
+  return MOUNT_GROUPS.filter(({ re }) => re.test(t)).map(({ group }) => group);
+}
+
 // Previously this scored a keyword as a hit whenever it was a raw substring
 // of the concatenated name+brand+collection+attrs text (e.g. the keyword
 // "душ" would "match" a product whose name merely contains "душевой" as part
@@ -381,7 +421,7 @@ const KEY_ATTRS = new Set([
 // mentioned "хром" once scored identically. Matching whole words, weighting
 // by field, and rewarding an exact field match make the top results
 // noticeably more often the right ones.
-function scoreProduct(product, keywords, typeKeyword) {
+function scoreProduct(product, keywords, typeKeyword, mountType) {
   const rawFields = [
     { text: product.name, weight: FIELD_WEIGHTS.name },
     { text: product.collection, weight: FIELD_WEIGHTS.collection },
@@ -452,7 +492,24 @@ function scoreProduct(product, keywords, typeKeyword) {
   // ("полотенцесушитель", "унитаз"...) to land somewhere on the product
   // is what actually asserts "this is that kind of thing"; without it, no
   // amount of matching secondary attrs should count as a real match.
-  return typeMatched ? score : 0;
+  if (!typeMatched) return 0;
+
+  // A confirmed mount_type from the photo that lands in a *different* group
+  // than the product's own "Установка"/"Тип монтажа" is a hard contradiction,
+  // not a missing bonus - a deck-standing mixer can never be the concealed
+  // one, no matter how well color/shape/brand line up. Only veto when both
+  // sides are unambiguous: an untagged product or an unrecognized mount
+  // phrase isn't evidence of anything, so it's left to score normally.
+  if (mountType) {
+    const wantGroups = mountGroupsOf(mountType);
+    const productMountText = `${product.attrs?.["Установка"] || ""} ${product.attrs?.["Тип монтажа"] || ""}`;
+    const haveGroups = mountGroupsOf(productMountText);
+    if (wantGroups.length && haveGroups.length && !wantGroups.some((g) => haveGroups.includes(g))) {
+      return 0;
+    }
+  }
+
+  return score;
 }
 
 async function findMatches({ Product, component, limit = 6 }) {
@@ -465,7 +522,7 @@ async function findMatches({ Product, component, limit = 6 }) {
   // future catalogue that outgrows memory; today it admits every category.
   const candidates = (await Product.find(filter).limit(5000).lean())
     .filter((p) => !SPARE_PART_PRODUCT.test(p.name || ""));
-  const keywords = [...(component.keywords || []), component.type].filter(Boolean);
+  const keywords = [...(component.keywords || []), component.type, component.mount_type].filter(Boolean);
 
   // No "first N of the category regardless" fallback anymore: scoreProduct
   // now returns 0 whenever the component's own type never matched anything
@@ -475,7 +532,7 @@ async function findMatches({ Product, component, limit = 6 }) {
   // used to look like a confident answer; showing nothing is the honest one,
   // and the frontend already has a "not found" state for an empty list.
   return candidates
-    .map((p) => ({ product: p, score: scoreProduct(p, keywords, component.type) }))
+    .map((p) => ({ product: p, score: scoreProduct(p, keywords, component.type, component.mount_type) }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
