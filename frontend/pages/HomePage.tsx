@@ -217,7 +217,7 @@ const HomePage: React.FC<HomePageProps> = ({ categories, catalogStatus, onAddToC
     return applySeo({
       title: 'Bathroom Design — сантехника, мебель и плитка для ванной комнаты',
       description: `Bathroom Design — каталог сантехники, мебели и плитки для ванных комнат в Казахстане. Категорий: ${totalCategories}, товаров: ${totalItems}.`,
-      keywords: 'сантехника, ванная комната, мебель для ванной, плитка, смесители, душевые кабины, Казахстан',
+      keywords: 'сантехника, ванная комната, мебель для ванной, плитка, смесители, душевые кабины, кухня, мойки для кухни, дизайн интерьера, дизайн ванной комнаты, хром, черный матовый, никель, золото, графит, белый, бронза, сатин, Казахстан, Алматы, Астана, GROHE, Allen Brau, Villeroy & Boch, Maier, Bugnatese, Raglo, TECE, Viega',
       canonicalUrl: 'https://bathroomdesign.kz/',
       ogType: 'website',
       ogUrl: 'https://bathroomdesign.kz/',
