@@ -118,8 +118,20 @@ function buildGroqSchema(categories) {
   };
 }
 
-function buildPrompt(categories) {
+// Fallback used only if the live-catalog aggregation (see public.js) finds
+// fewer than a handful of distinct values - e.g. an empty/near-empty catalog
+// in local dev. On real data the caller-supplied list wins.
+const DEFAULT_SHAPE_VOCABULARY = [
+  "округлая", "круглая", "квадратная", "прямоугольная", "угловатая", "плоская",
+  "модерн", "лофт", "классика", "минимализм"
+];
+
+function buildPrompt(categories, shapeVocabulary) {
   const categoryList = categories.map((c) => `- ${c.id}: ${c.title}`).join("\n");
+  const shapeWords = Array.isArray(shapeVocabulary) && shapeVocabulary.length >= 4
+    ? shapeVocabulary
+    : DEFAULT_SHAPE_VOCABULARY;
+  const shapeWordList = shapeWords.map((w) => `«${w}»`).join(", ");
   return (
     "На фото — интерьер или элементы ванной комнаты. Определи каждый видимый сантехнический компонент " +
     "(смесители, душевые системы, полотенцесушители, унитазы, инсталляции, аксессуары и т.д.).\n\n" +
@@ -145,8 +157,7 @@ function buildPrompt(categories) {
     // description (description не участвует в подборе товаров).
     "Для смесителей, раковин, душевых систем и другой сантехники с выраженной формой " +
     "обязательно включи в keywords форму/силуэт, используя точную формулировку из этого списка " +
-    "(выбери максимально подходящее, можно несколько): «округлая», «круглая», «квадратная», " +
-    "«прямоугольная», «угловатая», «плоская», «модерн», «лофт», «классика», «минимализм». " +
+    `(выбери максимально подходящее, можно несколько): ${shapeWordList}. ` +
     "Не заменяй эти слова описанием формы в свободной форме - именно эти формулировки ищутся в каталоге."
   );
 }
@@ -227,7 +238,7 @@ function parseComponents(text) {
   }
 }
 
-async function analyzeWithGemini({ buffer, mediaType, categories }) {
+async function analyzeWithGemini({ buffer, mediaType, categories, shapeVocabulary }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
 
@@ -237,7 +248,7 @@ async function analyzeWithGemini({ buffer, mediaType, categories }) {
       {
         parts: [
           { inline_data: { mime_type: prepared.mediaType, data: prepared.buffer.toString("base64") } },
-          { text: buildPrompt(categories) }
+          { text: buildPrompt(categories, shapeVocabulary) }
         ]
       }
     ],
@@ -267,7 +278,7 @@ async function analyzeWithGemini({ buffer, mediaType, categories }) {
   return parseComponents(text);
 }
 
-async function analyzeWithGroq({ buffer, mediaType, categories }) {
+async function analyzeWithGroq({ buffer, mediaType, categories, shapeVocabulary }) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error("GROQ_API_KEY is not configured");
 
@@ -286,7 +297,7 @@ async function analyzeWithGroq({ buffer, mediaType, categories }) {
           {
             type: "text",
             text:
-              buildPrompt(categories) +
+              buildPrompt(categories, shapeVocabulary) +
               "\n\nВсе значения полей type, description и keywords пиши ТОЛЬКО на русском языке."
           },
           { type: "image_url", image_url: { url: dataUrl } }
@@ -311,7 +322,7 @@ async function analyzeWithGroq({ buffer, mediaType, categories }) {
   return parseComponents(data?.choices?.[0]?.message?.content);
 }
 
-async function analyzeImage({ buffer, mediaType, categories }) {
+async function analyzeImage({ buffer, mediaType, categories, shapeVocabulary }) {
   if (!Array.isArray(categories) || categories.length === 0) {
     throw new Error("No catalog categories available for visual search");
   }
@@ -321,13 +332,13 @@ async function analyzeImage({ buffer, mediaType, categories }) {
   const secondary = primary === "gemini" ? "groq" : "gemini";
 
   try {
-    return await run[primary]({ buffer, mediaType, categories });
+    return await run[primary]({ buffer, mediaType, categories, shapeVocabulary });
   } catch (err) {
     // Gemini reaches Google through a proxy we don't control; if that hop dies
     // the feature should degrade to the weaker model rather than 503 the user.
     if (!hasKey(secondary)) throw err;
     console.error(`[visual-search] ${primary} failed, falling back to ${secondary}:`, err.message);
-    return run[secondary]({ buffer, mediaType, categories });
+    return run[secondary]({ buffer, mediaType, categories, shapeVocabulary });
   }
 }
 
@@ -380,14 +391,16 @@ const FIELD_WEIGHTS = { name: 3, attr: 2, keyAttr: 4, collection: 1, brand: 1 };
 // on the basin, and what colour it is, are the things a person actually points
 // at in a photo; "Материал: Латунь" is true of almost the whole catalogue. With
 // every attr weighted the same, those tie-breakers drowned in noise.
-// "тип монтажа" is the dominant real-data mount key (used on ~1272 mixers vs.
-// "установка" on ~335) - both existed in the supplier data under different
-// names, and only one was ever boosted. "форма"/"линии форм"/"дизайн" are
+// A production audit (2026-09-25, ~1900 active products) found the supplier
+// data spreads mount info across four differently-named attrs - "Установка"
+// (759 uses catalog-wide, the dominant one), "Тип монтажа" (99), "Вид монтажа"
+// (101, comparable to "Тип монтажа" but previously not boosted or vetoed on at
+// all) and "Монтаж" (48, mostly on ванны). "форма"/"линии форм"/"дизайн" are
 // where the catalog actually stores silhouette/style (округлая, угловатая,
 // модерн, лофт...) - without these, a correctly-detected mixer with the right
 // color and mount still ranked shape-mismatched products just as high.
 const KEY_ATTRS = new Set([
-  "установка", "тип монтажа", "назначение", "цвет", "название цвета", "color",
+  "установка", "тип монтажа", "вид монтажа", "монтаж", "назначение", "цвет", "название цвета", "color",
   "тип излива", "форма излива", "форма", "линии форм", "дизайн"
 ]);
 
@@ -502,7 +515,12 @@ function scoreProduct(product, keywords, typeKeyword, mountType) {
   // phrase isn't evidence of anything, so it's left to score normally.
   if (mountType) {
     const wantGroups = mountGroupsOf(mountType);
-    const productMountText = `${product.attrs?.["Установка"] || ""} ${product.attrs?.["Тип монтажа"] || ""}`;
+    const productMountText = [
+      product.attrs?.["Установка"],
+      product.attrs?.["Тип монтажа"],
+      product.attrs?.["Вид монтажа"],
+      product.attrs?.["Монтаж"]
+    ].filter(Boolean).join(" ");
     const haveGroups = mountGroupsOf(productMountText);
     if (wantGroups.length && haveGroups.length && !wantGroups.some((g) => haveGroups.includes(g))) {
       return 0;

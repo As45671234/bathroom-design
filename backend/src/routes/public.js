@@ -155,15 +155,55 @@ function publicRoutes(emailLimiter) {
         .filter((c) => c._id)
         .map((c) => ({ id: c._id, title: c.title }));
 
+      // Same fix as categories above, applied to the shape/style vocabulary the
+      // prompt asks the model to use: a fixed word list drifts from whatever the
+      // supplier data actually contains (an audit found "угловатая"/"плоская"
+      // appear ~0-1 times catalog-wide, while real values like "полукруглая"/
+      // "овальная" were missing from the prompt entirely), so it's built from
+      // the live "Форма"/"Линии форм"/"Дизайн" attr values instead.
+      const SHAPE_ATTR_KEYS = ["Форма", "Линии форм", "Дизайн"];
+      const shapeRows = await Product.aggregate([
+        { $match: { active: true, inStock: true } },
+        { $project: { attrs: { $objectToArray: "$attrs" } } },
+        { $unwind: "$attrs" },
+        { $match: { "attrs.k": { $in: SHAPE_ATTR_KEYS } } },
+        { $group: { _id: "$attrs.v", count: { $sum: 1 } } }
+      ]);
+      // Mongo's $toLower only affects ASCII, so Cyrillic case-folding (and the
+      // dedup it enables, e.g. "Модерн"/"модерн" as separate raw values) has to
+      // happen in JS instead.
+      const shapeCounts = new Map();
+      for (const row of shapeRows) {
+        const value = String(row._id || "").toLowerCase().trim();
+        if (!value) continue;
+        shapeCounts.set(value, (shapeCounts.get(value) || 0) + row.count);
+      }
+      const shapeVocabulary = [...shapeCounts.entries()]
+        .filter(([, count]) => count >= 3)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 20)
+        .map(([value]) => value);
+
       const { components } = await analyzeImage({
         buffer: req.file.buffer,
         mediaType: req.file.mimetype,
-        categories
+        categories,
+        shapeVocabulary
       });
 
       const results = [];
       for (const component of components) {
         const matches = await findMatches({ Product, component, limit: 3 });
+        if (matches.length === 0) {
+          // No dashboard for this yet, but pm2 keeps stdout - grepping these
+          // lines is the cheapest way to spot systematic blind spots (e.g. a
+          // component type this catalog never carries, or a category the
+          // model keeps misreading) without building analytics infra first.
+          console.log(
+            `[visual-search] no matches: type="${component.type}" category=${component.category_id} ` +
+            `mount=${component.mount_type} keywords=${(component.keywords || []).join(", ")}`
+          );
+        }
         results.push({
           type: component.type,
           description: component.description,
