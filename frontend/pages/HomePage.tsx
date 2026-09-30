@@ -173,7 +173,7 @@ const FEATURED_CATEGORIES: { id: string; image: string }[] = [
 ];
 
 const TRUST_SIGNALS = [
-  { icon: 'fa-truck', title: 'Быстрая доставка', desc: 'По Алматы и всему Казахстану' },
+  { icon: 'fa-truck', title: 'Быстрая доставка', desc: 'По Алматы, Астане и всему Казахстану' },
   { icon: 'fa-shield-alt', title: 'Гарантия качества', desc: 'Официальная гарантия от брендов' },
   { icon: 'fa-star', title: 'Проверенные бренды', desc: 'Grohe, Roca, Cersanit и другие' },
   { icon: 'fa-headset', title: 'Консультация', desc: 'Поможем подобрать решение под ваш проект' },
