@@ -125,7 +125,10 @@ export interface ColorSwatch {
   image: string;
 }
 
-export interface Designer {
+/** A recommended partner — an interior designer or a construction crew. Both are
+ *  presented identically on the site, so they share one shape; see
+ *  components/PartnersDirectory.tsx. */
+export interface Partner {
   id: string;
   name: string;
   position?: string;
@@ -140,6 +143,9 @@ export interface Designer {
   order?: number;
   active?: boolean;
 }
+
+export type Designer = Partner;
+export type Brigade = Partner;
 
 export interface SiteSettings {
   phone: string;

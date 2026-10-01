@@ -318,36 +318,41 @@ export async function adminPurgeAll(token: string, purgePassword: string) {
 }
 
 // --------------------
-// Designers
+// Partners — designers and construction crews share one API shape, so the
+// resource name doubles as the response key (`{ designers: [] }` / `{ brigades: [] }`).
 // --------------------
-export async function fetchDesigners() {
-  return request<{ designers: any[] }>('/api/designers');
+export type PartnerKind = 'designers' | 'brigades';
+
+export async function fetchPartners(kind: PartnerKind) {
+  const data = await request<Record<string, any[]>>(`/api/${kind}`);
+  return { partners: data[kind] || [] };
 }
 
-export async function adminFetchDesigners(token: string) {
-  return request<{ designers: any[] }>('/api/admin/designers', {
+export async function adminFetchPartners(token: string, kind: PartnerKind) {
+  const data = await request<Record<string, any[]>>(`/api/admin/${kind}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  return { partners: data[kind] || [] };
 }
 
-export async function adminCreateDesigner(token: string, body: any) {
-  return request<{ designer: any }>('/api/admin/designers', {
+export async function adminCreatePartner(token: string, kind: PartnerKind, body: any) {
+  return request<Record<string, any>>(`/api/admin/${kind}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
 }
 
-export async function adminPatchDesigner(token: string, id: string, patch: any) {
-  return request<{ designer: any }>(`/api/admin/designers/${id}`, {
+export async function adminPatchPartner(token: string, kind: PartnerKind, id: string, patch: any) {
+  return request<Record<string, any>>(`/api/admin/${kind}/${id}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(patch),
   });
 }
 
-export async function adminDeleteDesigner(token: string, id: string) {
-  return request<{ ok: boolean }>(`/api/admin/designers/${id}`, {
+export async function adminDeletePartner(token: string, kind: PartnerKind, id: string) {
+  return request<{ ok: boolean }>(`/api/admin/${kind}/${id}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });

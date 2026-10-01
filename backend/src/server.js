@@ -77,6 +77,9 @@ app.get("/sitemap.xml", async (req, res) => {
     const urls = [
       { loc: `${baseUrl}/`, lastmod: today, changefreq: "weekly", priority: "1.0" },
       { loc: `${baseUrl}/catalog`, lastmod: today, changefreq: "daily", priority: "0.9" },
+      { loc: `${baseUrl}/designers`, lastmod: today, changefreq: "monthly", priority: "0.7" },
+      { loc: `${baseUrl}/brigades`, lastmod: today, changefreq: "monthly", priority: "0.7" },
+      { loc: `${baseUrl}/warranty`, lastmod: today, changefreq: "monthly", priority: "0.5" },
       ...metas.map((m) => ({
         loc: `${baseUrl}/catalog?cat=${encodeURIComponent(m.category_id)}`,
         lastmod: lastmodOf(m),

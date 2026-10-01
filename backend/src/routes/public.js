@@ -6,6 +6,7 @@ const Lead = require("../models/Lead");
 const CategoryMeta = require("../models/CategoryMeta");
 const SiteSettings = require("../models/SiteSettings");
 const Designer = require("../models/Designer");
+const Brigade = require("../models/Brigade");
 const { normalizeImageUrl, normalizeSiteSettings } = require("../utils");
 const { analyzeImage, findMatches, isConfigured } = require("../services/visualSearch");
 
@@ -260,25 +261,31 @@ function publicRoutes(emailLimiter) {
     res.json({ ok: true, settings: normalizeSiteSettings(settings || {}) });
   });
 
-  // Designers (public profiles: photo, position, bio, contacts, portfolio)
-  router.get("/designers", async (req, res) => {
-    const designers = await Designer.find({ active: true }).sort({ order: 1, createdAt: 1 }).lean();
-    res.json({
-      designers: designers.map((d) => ({
-        id: String(d._id),
-        name: d.name,
-        position: d.position || "",
-        photo: normalizeImageUrl(d.photo),
-        bio: d.bio || "",
-        experienceYears: d.experienceYears,
-        phone: d.phone || "",
-        email: d.email || "",
-        instagramUrl: d.instagramUrl || "",
-        whatsappUrl: d.whatsappUrl || "",
-        portfolio: (Array.isArray(d.portfolio) ? d.portfolio : []).map((x) => normalizeImageUrl(x)).filter(Boolean)
-      }))
+  // Partners — designers and construction crews. Same public profile shape
+  // (photo, position, bio, contacts, portfolio), only the collection differs.
+  const registerPartnerRoute = (routePath, Model, listKey) => {
+    router.get(`/${routePath}`, async (req, res) => {
+      const items = await Model.find({ active: true }).sort({ order: 1, createdAt: 1 }).lean();
+      res.json({
+        [listKey]: items.map((d) => ({
+          id: String(d._id),
+          name: d.name,
+          position: d.position || "",
+          photo: normalizeImageUrl(d.photo),
+          bio: d.bio || "",
+          experienceYears: d.experienceYears,
+          phone: d.phone || "",
+          email: d.email || "",
+          instagramUrl: d.instagramUrl || "",
+          whatsappUrl: d.whatsappUrl || "",
+          portfolio: (Array.isArray(d.portfolio) ? d.portfolio : []).map((x) => normalizeImageUrl(x)).filter(Boolean)
+        }))
+      });
     });
-  });
+  };
+
+  registerPartnerRoute("designers", Designer, "designers");
+  registerPartnerRoute("brigades", Brigade, "brigades");
 
   return router;
 }

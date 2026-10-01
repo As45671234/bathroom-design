@@ -100,6 +100,18 @@ const Header: React.FC<HeaderProps> = ({ cartCount, categories, phone, logoUrl }
               Дизайнеры
             </Link>
             <Link
+              to="/brigades"
+              className={`text-xs font-semibold ${textColor} ${hoverColor} transition-colors`}
+            >
+              Бригады
+            </Link>
+            <Link
+              to="/warranty"
+              className={`text-xs font-semibold ${textColor} ${hoverColor} transition-colors`}
+            >
+              Гарантия
+            </Link>
+            <Link
               to="/visual-search"
               className={`inline-flex items-center gap-2 text-xs font-semibold ${textColor} ${hoverColor} transition-colors`}
             >
@@ -252,6 +264,24 @@ const Header: React.FC<HeaderProps> = ({ cartCount, categories, phone, logoUrl }
             >
               <i className="fas fa-user-tie"></i>
               Дизайнеры
+            </Link>
+
+            <Link
+              to="/brigades"
+              className="flex items-center gap-3 font-heading text-lg font-bold text-[#1D2B49]"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <i className="fas fa-helmet-safety"></i>
+              Бригады
+            </Link>
+
+            <Link
+              to="/warranty"
+              className="flex items-center gap-3 font-heading text-lg font-bold text-[#1D2B49]"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <i className="fas fa-shield-halved"></i>
+              Гарантия и сервис
             </Link>
 
             <button

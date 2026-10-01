@@ -10,6 +10,8 @@ import CatalogPage from './pages/CatalogPage';
 import ProductPage from './pages/ProductPage';
 import VisualSearchPage from './pages/VisualSearchPage';
 import DesignersPage from './pages/DesignersPage';
+import BrigadesPage from './pages/BrigadesPage';
+import WarrantyPage from './pages/WarrantyPage';
 import NotFoundPage from './pages/NotFoundPage';
 import CartPage from './pages/CartPage';
 import { fetchCatalog, fetchSiteSettings, getAdminToken, clearAdminToken, visualSearch, VisualSearchComponent } from './services/api';
@@ -302,6 +304,8 @@ const App: React.FC = () => {
               }
             />
             <Route path="/designers" element={<DesignersPage />} />
+            <Route path="/brigades" element={<BrigadesPage />} />
+            <Route path="/warranty" element={<WarrantyPage />} />
             <Route
               path="/cart"
               element={

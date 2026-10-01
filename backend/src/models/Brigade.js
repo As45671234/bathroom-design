@@ -1,3 +1,3 @@
 const { createPartnerModel } = require("./partnerModel");
 
-module.exports = createPartnerModel("Designer");
+module.exports = createPartnerModel("Brigade");

@@ -166,6 +166,12 @@ const Footer: React.FC<FooterProps> = ({ siteSettings, categories }) => {
                 <Link to="/designers" className="hover:text-white transition-colors">Дизайнеры</Link>
               </li>
               <li>
+                <Link to="/brigades" className="hover:text-white transition-colors">Строительные бригады</Link>
+              </li>
+              <li>
+                <Link to="/warranty" className="hover:text-white transition-colors">Гарантия и сервис</Link>
+              </li>
+              <li>
                 <button type="button" onClick={() => goToSection('about')} className="hover:text-white transition-colors text-left">
                   О компании
                 </button>

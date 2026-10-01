@@ -9,10 +9,10 @@ import {
   adminDeleteCategory, adminPurgeAll, adminGetSiteSettings, adminSaveSiteSettings, adminDownloadImportTemplate,
   adminUploadImage, adminUploadCategoryVideo, adminFetchCategories,
   adminCountProductsWithoutPhoto, adminDeleteProductsWithoutPhoto,
-  adminFetchDesigners, adminCreateDesigner, adminPatchDesigner, adminDeleteDesigner,
   adminBulkDeleteProducts, adminBulkUpdateProducts, adminMergeCategories, adminRenameSubcategory,
 } from '../services/api';
 import { normalizeAssetUrl } from '../utils/assetUrl';
+import PartnersAdminTab, { DESIGNER_ADMIN_LABELS, BRIGADE_ADMIN_LABELS } from '../components/admin/PartnersAdminTab';
 
 const DEFAULT_SITE_SETTINGS: SiteSettings = {
   phone: '+7 700 000 00 00',
@@ -59,26 +59,7 @@ interface AdminDashboardProps {
   onLogout: () => void;
 }
 
-type Tab = 'inventory' | 'import' | 'orders' | 'leads' | 'categories' | 'designers' | 'settings';
-
-interface DesignerDraft {
-  name: string;
-  position: string;
-  photo: string;
-  bio: string;
-  experienceYears: string;
-  phone: string;
-  email: string;
-  instagramUrl: string;
-  whatsappUrl: string;
-  portfolio: string[];
-  active: boolean;
-}
-
-const emptyDesignerDraft: DesignerDraft = {
-  name: '', position: '', photo: '', bio: '', experienceYears: '',
-  phone: '', email: '', instagramUrl: '', whatsappUrl: '', portfolio: [], active: true,
-};
+type Tab = 'inventory' | 'import' | 'orders' | 'leads' | 'categories' | 'designers' | 'brigades' | 'settings';
 
 const parseNum = (v: string) => {
   const s = String(v || '').trim();
@@ -184,16 +165,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
   const [subcategoryDrafts, setSubcategoryDrafts] = useState<Record<string, string>>({});
   const [subcategorySaving, setSubcategorySaving] = useState<Record<string, boolean>>({});
 
-  // Designers tab
-  const [designers, setDesigners] = useState<any[]>([]);
-  const [designersLoaded, setDesignersLoaded] = useState(false);
-  const [newDesignerName, setNewDesignerName] = useState('');
-  const [creatingDesigner, setCreatingDesigner] = useState(false);
-  const [designerDrafts, setDesignerDrafts] = useState<Record<string, DesignerDraft>>({});
-  const [designerSaving, setDesignerSaving] = useState<Record<string, boolean>>({});
-  const [designerDeleting, setDesignerDeleting] = useState<Record<string, boolean>>({});
-  const [designerPhotoUploading, setDesignerPhotoUploading] = useState<Record<string, boolean>>({});
-  const [designerPortfolioUploading, setDesignerPortfolioUploading] = useState<Record<string, boolean>>({});
+  // Designers and brigades live in PartnersAdminTab, which owns its own state.
 
   // Orders
   const [orders, setOrders] = useState<any[]>([]);
@@ -275,16 +247,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
     setLeadsPage(Number(data.page || page));
   };
 
-  const loadDesigners = async () => {
-    const data = await adminFetchDesigners(token);
-    setDesigners(data.designers || []);
-    setDesignersLoaded(true);
-  };
-
   useEffect(() => { refreshAll(); loadSiteSettings(); }, []);
   useEffect(() => { if (activeTab === 'orders') loadOrders(ordersPage); }, [activeTab, ordersPage, ordersStatus]);
   useEffect(() => { if (activeTab === 'leads') loadLeads(leadsPage); }, [activeTab, leadsPage, leadsStatus]);
-  useEffect(() => { if (activeTab === 'designers' && !designersLoaded) loadDesigners(); }, [activeTab, designersLoaded]);
   useEffect(() => { setInvPage(1); }, [searchTerm, invBrandFilter, invCategoryFilter, invSubcategoryFilter, invStockFilter]);
   useEffect(() => { setInvSubcategoryFilter(''); }, [invCategoryFilter]);
 
@@ -307,30 +272,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
       return next;
     });
   }, [adminCategories]);
-
-  useEffect(() => {
-    setDesignerDrafts((prev) => {
-      const next = { ...prev };
-      designers.forEach((d: any) => {
-        const id = String(d.id || '');
-        if (!id || next[id]) return;
-        next[id] = {
-          name: String(d.name || ''),
-          position: String(d.position || ''),
-          photo: String(d.photo || ''),
-          bio: String(d.bio || ''),
-          experienceYears: d.experienceYears !== undefined && d.experienceYears !== null ? String(d.experienceYears) : '',
-          phone: String(d.phone || ''),
-          email: String(d.email || ''),
-          instagramUrl: String(d.instagramUrl || ''),
-          whatsappUrl: String(d.whatsappUrl || ''),
-          portfolio: Array.isArray(d.portfolio) ? d.portfolio : [],
-          active: d.active !== false,
-        };
-      });
-      return next;
-    });
-  }, [designers]);
 
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -739,93 +680,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
     }
   };
 
-  // ---------------- Designers ----------------
-  const submitCreateDesigner = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const name = newDesignerName.trim();
-    if (!name) { alert('Введите имя дизайнера'); return; }
-    setCreatingDesigner(true);
-    try {
-      await adminCreateDesigner(token, { name });
-      setNewDesignerName('');
-      await loadDesigners();
-    } catch (e: any) {
-      alert(e?.message || 'Ошибка создания дизайнера');
-    } finally {
-      setCreatingDesigner(false);
-    }
-  };
-
-  const saveDesignerMeta = async (id: string) => {
-    const draft = designerDrafts[id];
-    if (!draft) return;
-    if (!draft.name.trim()) { alert('Введите имя дизайнера'); return; }
-    setDesignerSaving((p) => ({ ...p, [id]: true }));
-    try {
-      await adminPatchDesigner(token, id, {
-        name: draft.name.trim(),
-        position: draft.position.trim(),
-        photo: draft.photo,
-        bio: draft.bio.trim(),
-        experienceYears: draft.experienceYears.trim() ? Number(draft.experienceYears) : '',
-        phone: draft.phone.trim(),
-        email: draft.email.trim(),
-        instagramUrl: draft.instagramUrl.trim(),
-        whatsappUrl: draft.whatsappUrl.trim(),
-        portfolio: draft.portfolio,
-        active: draft.active,
-      });
-      await loadDesigners();
-    } catch (e: any) {
-      alert(e?.message || 'Ошибка сохранения дизайнера');
-    } finally {
-      setDesignerSaving((p) => ({ ...p, [id]: false }));
-    }
-  };
-
-  const deleteDesignerById = async (id: string) => {
-    if (!window.confirm('Удалить дизайнера?')) return;
-    setDesignerDeleting((p) => ({ ...p, [id]: true }));
-    try {
-      await adminDeleteDesigner(token, id);
-      await loadDesigners();
-    } catch (e: any) {
-      alert(e?.message || 'Ошибка удаления дизайнера');
-    } finally {
-      setDesignerDeleting((p) => ({ ...p, [id]: false }));
-    }
-  };
-
-  const uploadDesignerPhoto = async (id: string, file?: File | null) => {
-    if (!file) return;
-    setDesignerPhotoUploading((p) => ({ ...p, [id]: true }));
-    try {
-      const url = await adminUploadImage(token, file);
-      setDesignerDrafts((prev) => ({ ...prev, [id]: { ...prev[id], photo: url } }));
-    } catch (e: any) {
-      alert(e?.message || 'Ошибка загрузки фото');
-    } finally {
-      setDesignerPhotoUploading((p) => ({ ...p, [id]: false }));
-    }
-  };
-
-  const uploadDesignerPortfolioImage = async (id: string, file?: File | null) => {
-    if (!file) return;
-    setDesignerPortfolioUploading((p) => ({ ...p, [id]: true }));
-    try {
-      const url = await adminUploadImage(token, file);
-      setDesignerDrafts((prev) => ({ ...prev, [id]: { ...prev[id], portfolio: [...(prev[id]?.portfolio || []), url] } }));
-    } catch (e: any) {
-      alert(e?.message || 'Ошибка загрузки изображения');
-    } finally {
-      setDesignerPortfolioUploading((p) => ({ ...p, [id]: false }));
-    }
-  };
-
-  const removeDesignerPortfolioImage = (id: string, idx: number) => {
-    setDesignerDrafts((prev) => ({ ...prev, [id]: { ...prev[id], portfolio: (prev[id]?.portfolio || []).filter((_, i) => i !== idx) } }));
-  };
-
   // ---------------- Site settings ----------------
   const updateHomepageImages = (patch: Partial<HomepageImages>) => {
     setSiteForm((prev) => ({ ...prev, homepageImages: { ...prev.homepageImages, ...patch } }));
@@ -994,6 +848,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
         {tabBtn('leads', 'fa-inbox', 'Заявки')}
         {tabBtn('categories', 'fa-images', 'Категории')}
         {tabBtn('designers', 'fa-user-tie', 'Дизайнеры')}
+        {tabBtn('brigades', 'fa-helmet-safety', 'Бригады')}
         {tabBtn('settings', 'fa-gear', 'Настройки сайта')}
       </div>
 
@@ -1593,121 +1448,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCategories, onLogout
         )}
 
         {activeTab === 'designers' && (
-          <div className="p-8">
-            <h3 className="text-xl font-black text-[#1D2B49] uppercase tracking-tighter mb-6">Дизайнеры</h3>
+          <PartnersAdminTab token={token} kind="designers" labels={DESIGNER_ADMIN_LABELS} />
+        )}
 
-            <form onSubmit={submitCreateDesigner} className="mb-8 bg-gray-50 rounded-3xl border border-gray-100 p-6">
-              <div className="text-sm font-black text-[#1D2B49] uppercase tracking-widest mb-4">Добавить дизайнера</div>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <input
-                  className="flex-1 px-4 py-3 rounded-2xl bg-white border border-gray-200"
-                  value={newDesignerName}
-                  onChange={(e) => setNewDesignerName(e.target.value)}
-                  placeholder="Имя дизайнера"
-                />
-                <button
-                  type="submit"
-                  disabled={creatingDesigner}
-                  className={`px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest whitespace-nowrap ${creatingDesigner ? 'bg-gray-200 text-gray-400' : 'bg-[#1D2B49] text-white hover:bg-[#152036]'}`}
-                >
-                  {creatingDesigner ? 'Создание...' : 'Добавить дизайнера'}
-                </button>
-              </div>
-              <p className="text-xs text-gray-400 mt-3">Остальные данные (фото, описание, контакты, портфолио) заполните после создания карточки.</p>
-            </form>
-
-            {!designersLoaded ? (
-              <div className="p-16 text-center text-gray-400">Загрузка...</div>
-            ) : designers.length === 0 ? (
-              <div className="p-16 text-center bg-gray-50 rounded-3xl text-gray-400">Дизайнеров пока нет</div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {designers.map((d: any) => {
-                  const id = String(d.id || '');
-                  const draft = designerDrafts[id] || { ...emptyDesignerDraft, name: d.name };
-                  const isSaving = !!designerSaving[id];
-                  const isDeleting = !!designerDeleting[id];
-                  const isPhotoUploading = !!designerPhotoUploading[id];
-                  const isPortfolioUploading = !!designerPortfolioUploading[id];
-
-                  return (
-                    <div key={id} className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="text-lg font-black text-[#1D2B49]">{draft.name || 'Без имени'}</div>
-                        <label className="flex items-center gap-2 text-xs font-bold text-gray-500">
-                          <input
-                            type="checkbox"
-                            checked={draft.active}
-                            onChange={(e) => setDesignerDrafts((p) => ({ ...p, [id]: { ...draft, active: e.target.checked } }))}
-                          />
-                          Показывать на сайте
-                        </label>
-                      </div>
-
-                      <div className="flex gap-4 mb-4">
-                        <div className="w-24 h-24 flex-shrink-0 rounded-2xl overflow-hidden border border-gray-100 bg-gray-50 flex items-center justify-center">
-                          {draft.photo ? (
-                            <img src={normalizeAssetUrl(draft.photo)} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <i className="fas fa-user text-2xl text-gray-300"></i>
-                          )}
-                        </div>
-                        <label className={`flex items-center justify-center gap-2 px-3 py-2 h-fit rounded-2xl border text-xs font-bold ${isPhotoUploading ? 'bg-gray-100 text-gray-400' : 'bg-white text-[#1D2B49] border-gray-200 cursor-pointer hover:bg-gray-50'}`}>
-                          <i className={`fas ${isPhotoUploading ? 'fa-spinner fa-spin' : 'fa-camera'}`}></i> Фото
-                          <input type="file" accept="image/*" className="hidden" disabled={isPhotoUploading} onChange={(e) => { uploadDesignerPhoto(id, e.target.files?.[0]); e.currentTarget.value = ''; }} />
-                        </label>
-                      </div>
-
-                      <div className="space-y-3">
-                        <input className="w-full px-4 py-3 rounded-2xl bg-white border border-gray-200 text-sm" value={draft.name} onChange={(e) => setDesignerDrafts((p) => ({ ...p, [id]: { ...draft, name: e.target.value } }))} placeholder="Имя" />
-                        <input className="w-full px-4 py-3 rounded-2xl bg-white border border-gray-200 text-sm" value={draft.position} onChange={(e) => setDesignerDrafts((p) => ({ ...p, [id]: { ...draft, position: e.target.value } }))} placeholder="Должность (например, Ведущий дизайнер)" />
-                        <textarea className="w-full px-4 py-3 rounded-2xl bg-white border border-gray-200 text-sm min-h-[90px]" value={draft.bio} onChange={(e) => setDesignerDrafts((p) => ({ ...p, [id]: { ...draft, bio: e.target.value } }))} placeholder="Описание / о дизайнере" />
-                        <input className="w-full px-4 py-3 rounded-2xl bg-white border border-gray-200 text-sm" value={draft.experienceYears} onChange={(e) => setDesignerDrafts((p) => ({ ...p, [id]: { ...draft, experienceYears: e.target.value.replace(/[^\d]/g, '') } }))} placeholder="Опыт работы (лет)" />
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <input className="w-full px-4 py-3 rounded-2xl bg-white border border-gray-200 text-sm" value={draft.phone} onChange={(e) => setDesignerDrafts((p) => ({ ...p, [id]: { ...draft, phone: e.target.value } }))} placeholder="Телефон" />
-                          <input className="w-full px-4 py-3 rounded-2xl bg-white border border-gray-200 text-sm" value={draft.email} onChange={(e) => setDesignerDrafts((p) => ({ ...p, [id]: { ...draft, email: e.target.value } }))} placeholder="Email" />
-                          <input className="w-full px-4 py-3 rounded-2xl bg-white border border-gray-200 text-sm" value={draft.instagramUrl} onChange={(e) => setDesignerDrafts((p) => ({ ...p, [id]: { ...draft, instagramUrl: e.target.value } }))} placeholder="Ссылка Instagram" />
-                          <input className="w-full px-4 py-3 rounded-2xl bg-white border border-gray-200 text-sm" value={draft.whatsappUrl} onChange={(e) => setDesignerDrafts((p) => ({ ...p, [id]: { ...draft, whatsappUrl: e.target.value } }))} placeholder="Ссылка WhatsApp (wa.me/...)" />
-                        </div>
-
-                        <div className="border-t border-gray-100 pt-3 space-y-2">
-                          <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Портфолио</div>
-                          <div className="flex flex-wrap gap-2">
-                            {draft.portfolio.map((src, idx) => (
-                              <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden border border-gray-100 bg-gray-50 group">
-                                <img src={normalizeAssetUrl(src)} alt="" className="w-full h-full object-cover" />
-                                <button
-                                  type="button"
-                                  onClick={() => removeDesignerPortfolioImage(id, idx)}
-                                  className="absolute inset-0 bg-black/50 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                >
-                                  <i className="fas fa-trash"></i>
-                                </button>
-                              </div>
-                            ))}
-                            <label className={`w-16 h-16 flex items-center justify-center rounded-xl border-2 border-dashed text-xs ${isPortfolioUploading ? 'bg-gray-100 text-gray-400 border-gray-200' : 'border-gray-300 text-gray-400 cursor-pointer hover:bg-gray-50'}`}>
-                              <i className={`fas ${isPortfolioUploading ? 'fa-spinner fa-spin' : 'fa-plus'}`}></i>
-                              <input type="file" accept="image/*" className="hidden" disabled={isPortfolioUploading} onChange={(e) => { uploadDesignerPortfolioImage(id, e.target.files?.[0]); e.currentTarget.value = ''; }} />
-                            </label>
-                          </div>
-                        </div>
-
-                        <div className="flex gap-3 pt-2">
-                          <button type="button" onClick={() => saveDesignerMeta(id)} disabled={isSaving} className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase ${isSaving ? 'bg-gray-100 text-gray-400' : 'bg-[#1D2B49] text-white hover:bg-[#152036]'}`}>
-                            {isSaving ? 'Сохранение...' : 'Сохранить'}
-                          </button>
-                          <button type="button" onClick={() => deleteDesignerById(id)} disabled={isDeleting} className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase ${isDeleting ? 'bg-gray-100 text-gray-400' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}>
-                            {isDeleting ? 'Удаление...' : 'Удалить'}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+        {activeTab === 'brigades' && (
+          <PartnersAdminTab token={token} kind="brigades" labels={BRIGADE_ADMIN_LABELS} />
         )}
 
         {activeTab === 'settings' && (

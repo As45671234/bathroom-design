@@ -12,6 +12,7 @@ const Order = require("../models/Order");
 const Lead = require("../models/Lead");
 const SiteSettings = require("../models/SiteSettings");
 const Designer = require("../models/Designer");
+const Brigade = require("../models/Brigade");
 const { requireAdmin } = require("../middleware/auth");
 const { workbookToProducts, buildImportTemplateWorkbook } = require("../services/excelImport");
 const { slugify, buildProductKey, normalizeImageUrl, normalizeSiteSettings } = require("../utils");
@@ -1245,9 +1246,9 @@ router.put("/site-settings", requireAdmin, async (req, res) => {
 });
 
 // --------------------
-// Designers (Admin)
+// Partners: designers and construction crews (Admin)
 // --------------------
-function serializeDesigner(d) {
+function serializePartner(d) {
   return {
     id: String(d._id),
     name: d.name,
@@ -1265,66 +1266,76 @@ function serializeDesigner(d) {
   };
 }
 
-router.get("/designers", requireAdmin, async (req, res) => {
-  const designers = await Designer.find({}).sort({ order: 1, createdAt: 1 }).lean();
-  res.json({ designers: designers.map(serializeDesigner) });
-});
-
-router.post("/designers", requireAdmin, async (req, res) => {
-  const body = req.body || {};
-  const name = String(body.name || "").trim();
-  if (!name) return res.status(400).json({ error: "name is required" });
-
-  const created = await Designer.create({
-    name,
-    position: String(body.position || "").trim(),
-    photo: String(body.photo || "").trim(),
-    bio: String(body.bio || "").trim(),
-    experienceYears: body.experienceYears !== undefined && body.experienceYears !== "" ? Number(body.experienceYears) : undefined,
-    phone: String(body.phone || "").trim(),
-    email: String(body.email || "").trim(),
-    instagramUrl: String(body.instagramUrl || "").trim(),
-    whatsappUrl: String(body.whatsappUrl || "").trim(),
-    portfolio: Array.isArray(body.portfolio) ? body.portfolio.map((x) => String(x || "").trim()).filter(Boolean) : [],
-    order: Number(body.order || 0),
-    active: body.active !== undefined ? !!body.active : true
+/**
+ * Designers and crews get identical CRUD, so the routes are registered from one
+ * place. `listKey`/`itemKey` keep each resource's response shape unchanged
+ * (`{ designers: [...] }`, `{ designer: {...} }`) — the admin UI reads those.
+ */
+function registerPartnerAdminRoutes({ path: routePath, Model, listKey, itemKey }) {
+  router.get(`/${routePath}`, requireAdmin, async (req, res) => {
+    const items = await Model.find({}).sort({ order: 1, createdAt: 1 }).lean();
+    res.json({ [listKey]: items.map(serializePartner) });
   });
 
-  res.json({ designer: serializeDesigner(created) });
-});
+  router.post(`/${routePath}`, requireAdmin, async (req, res) => {
+    const body = req.body || {};
+    const name = String(body.name || "").trim();
+    if (!name) return res.status(400).json({ error: "name is required" });
 
-router.patch("/designers/:id", requireAdmin, async (req, res) => {
-  const d = await Designer.findById(req.params.id);
-  if (!d) return res.status(404).json({ error: "not found" });
+    const created = await Model.create({
+      name,
+      position: String(body.position || "").trim(),
+      photo: String(body.photo || "").trim(),
+      bio: String(body.bio || "").trim(),
+      experienceYears: body.experienceYears !== undefined && body.experienceYears !== "" ? Number(body.experienceYears) : undefined,
+      phone: String(body.phone || "").trim(),
+      email: String(body.email || "").trim(),
+      instagramUrl: String(body.instagramUrl || "").trim(),
+      whatsappUrl: String(body.whatsappUrl || "").trim(),
+      portfolio: Array.isArray(body.portfolio) ? body.portfolio.map((x) => String(x || "").trim()).filter(Boolean) : [],
+      order: Number(body.order || 0),
+      active: body.active !== undefined ? !!body.active : true
+    });
 
-  const patch = req.body || {};
-  if (patch.name !== undefined) d.name = String(patch.name).trim();
-  if (patch.position !== undefined) d.position = String(patch.position).trim();
-  if (patch.photo !== undefined) d.photo = String(patch.photo).trim();
-  if (patch.bio !== undefined) d.bio = String(patch.bio).trim();
-  if (patch.experienceYears !== undefined) {
-    d.experienceYears = patch.experienceYears === "" || patch.experienceYears === null ? undefined : Number(patch.experienceYears);
-  }
-  if (patch.phone !== undefined) d.phone = String(patch.phone).trim();
-  if (patch.email !== undefined) d.email = String(patch.email).trim();
-  if (patch.instagramUrl !== undefined) d.instagramUrl = String(patch.instagramUrl).trim();
-  if (patch.whatsappUrl !== undefined) d.whatsappUrl = String(patch.whatsappUrl).trim();
-  if (patch.portfolio !== undefined && Array.isArray(patch.portfolio)) {
-    d.portfolio = patch.portfolio.map((x) => String(x || "").trim()).filter(Boolean);
-  }
-  if (patch.order !== undefined) d.order = Number(patch.order || 0);
-  if (patch.active !== undefined) d.active = !!patch.active;
+    res.json({ [itemKey]: serializePartner(created) });
+  });
 
-  if (!String(d.name || "").trim()) return res.status(400).json({ error: "name is required" });
+  router.patch(`/${routePath}/:id`, requireAdmin, async (req, res) => {
+    const d = await Model.findById(req.params.id);
+    if (!d) return res.status(404).json({ error: "not found" });
 
-  await d.save();
-  res.json({ designer: serializeDesigner(d) });
-});
+    const patch = req.body || {};
+    if (patch.name !== undefined) d.name = String(patch.name).trim();
+    if (patch.position !== undefined) d.position = String(patch.position).trim();
+    if (patch.photo !== undefined) d.photo = String(patch.photo).trim();
+    if (patch.bio !== undefined) d.bio = String(patch.bio).trim();
+    if (patch.experienceYears !== undefined) {
+      d.experienceYears = patch.experienceYears === "" || patch.experienceYears === null ? undefined : Number(patch.experienceYears);
+    }
+    if (patch.phone !== undefined) d.phone = String(patch.phone).trim();
+    if (patch.email !== undefined) d.email = String(patch.email).trim();
+    if (patch.instagramUrl !== undefined) d.instagramUrl = String(patch.instagramUrl).trim();
+    if (patch.whatsappUrl !== undefined) d.whatsappUrl = String(patch.whatsappUrl).trim();
+    if (patch.portfolio !== undefined && Array.isArray(patch.portfolio)) {
+      d.portfolio = patch.portfolio.map((x) => String(x || "").trim()).filter(Boolean);
+    }
+    if (patch.order !== undefined) d.order = Number(patch.order || 0);
+    if (patch.active !== undefined) d.active = !!patch.active;
 
-router.delete("/designers/:id", requireAdmin, async (req, res) => {
-  const d = await Designer.findByIdAndDelete(req.params.id).lean();
-  if (!d) return res.status(404).json({ error: "not found" });
-  res.json({ ok: true });
-});
+    if (!String(d.name || "").trim()) return res.status(400).json({ error: "name is required" });
+
+    await d.save();
+    res.json({ [itemKey]: serializePartner(d) });
+  });
+
+  router.delete(`/${routePath}/:id`, requireAdmin, async (req, res) => {
+    const d = await Model.findByIdAndDelete(req.params.id).lean();
+    if (!d) return res.status(404).json({ error: "not found" });
+    res.json({ ok: true });
+  });
+}
+
+registerPartnerAdminRoutes({ path: "designers", Model: Designer, listKey: "designers", itemKey: "designer" });
+registerPartnerAdminRoutes({ path: "brigades", Model: Brigade, listKey: "brigades", itemKey: "brigade" });
 
 module.exports = router;
