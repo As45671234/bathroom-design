@@ -175,7 +175,16 @@ const CatalogPage: React.FC<CatalogPageProps> = ({ categories, catalogStatus, on
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   // Empty array means "all categories"; one or more ids narrow the view.
-  const [selectedCatIds, setSelectedCatIds] = useState<string[]>([]);
+  // Seeded straight from the URL rather than from `[]`: starting empty and
+  // letting the sync effect below fill it once the catalog arrives reads as a
+  // *category change* to the reset effect, which then wipes every other filter
+  // in the URL. That is what made the back button land on a bare category.
+  // Ids can't be validated against `categories` yet (still loading) — the sync
+  // effect prunes unknown ones a moment later.
+  const [selectedCatIds, setSelectedCatIds] = useState<string[]>(() => {
+    const raw = searchParams.getAll('cat');
+    return raw.includes('all') ? [] : raw;
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
@@ -765,7 +774,7 @@ const CatalogPage: React.FC<CatalogPageProps> = ({ categories, catalogStatus, on
               data-lenis-prevent
               className={`bg-white border border-gray-100 px-5 py-2 ${
                 filtersOpen
-                  ? 'absolute bottom-0 left-0 right-0 max-h-[85vh] overflow-y-auto rounded-t-3xl pb-24 lg:static lg:max-h-none lg:overflow-visible lg:rounded-3xl lg:pb-2'
+                  ? 'absolute bottom-0 left-0 right-0 max-h-[85vh] overflow-y-auto rounded-t-3xl pb-0 lg:static lg:max-h-none lg:overflow-visible lg:rounded-3xl lg:pb-2'
                   : 'rounded-3xl'
               }`}
             >
@@ -958,7 +967,7 @@ const CatalogPage: React.FC<CatalogPageProps> = ({ categories, catalogStatus, on
               ) : null}
 
               {filtersOpen ? (
-                <div className="sticky bottom-0 -mx-5 border-t border-gray-100 bg-white px-5 py-3 lg:hidden">
+                <div className="sticky bottom-0 -mx-5 border-t border-gray-100 bg-white px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] lg:hidden">
                   <button
                     type="button"
                     onClick={() => setFiltersOpen(false)}
