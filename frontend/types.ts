@@ -153,9 +153,14 @@ export type Brigade = Partner;
 
 /** A catalog brand as a landing-page subject (/brand/<slug>). */
 export interface Brand {
+  /** Display spelling chosen by the server from `variants`. */
   name: string;
   slug: string;
   count: number;
+  /** Every raw spelling this brand is stored under — suppliers send the same
+   *  brand as "AQUANET" and "Aquanet". Filter products on these, not `name`.
+   *  See backend/src/services/seoRegistry.js#groupBrands. */
+  variants: string[];
 }
 
 export interface SiteSettings {

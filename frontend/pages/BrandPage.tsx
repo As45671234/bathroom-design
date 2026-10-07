@@ -64,9 +64,13 @@ const BrandPage: React.FC<BrandPageProps> = ({
 
   const products = useMemo(() => {
     if (!brand) return [];
+    // Match every spelling the brand is stored under, not just the display
+    // one — "Villeroy&Boch" and "Villeroy & Boch" are the same brand and both
+    // belong on this page.
+    const spellings = new Set(brand.variants);
     return categories
       .flatMap((c) => c.items || [])
-      .filter((p) => (p.brand || '').trim() === brand.name)
+      .filter((p) => spellings.has((p.brand || '').trim()))
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [categories, brand]);
 

@@ -18,6 +18,61 @@ let inFlight = null;
 
 const ACTIVE = { active: true, inStock: true };
 
+/** Brand identity ignoring case, spacing and punctuation, so "AQUANET" /
+ *  "Aquanet" and "Villeroy&Boch" / "Villeroy & Boch" collapse to one. */
+const brandKey = (name) => String(name).toLowerCase().replace(/[^0-9a-zа-яё]/gi, "");
+
+const isAllCaps = (s) => s === s.toUpperCase() && /[A-ZА-ЯЁ]/.test(s);
+
+/**
+ * Suppliers spell the same brand several ways in the import files, and the
+ * catalog stores whatever arrived: production had 'AQUANET' on 12 products
+ * and 'Aquanet' on 2, 'Villeroy&Boch' on 20 and 'Villeroy & Boch' on 1.
+ * Treated as distinct brands they produce two landing pages per brand, each
+ * holding a slice of the range and competing with the other for the same
+ * query — worse than having none.
+ *
+ * Merging happens here rather than by rewriting the documents because the
+ * owner re-imports Excel regularly: a one-off cleanup would be undone by the
+ * next import, this holds. `variants` carries every raw spelling so callers
+ * can still match products exactly (the `brand` index stays usable via $in)
+ * instead of running a regex over the collection.
+ *
+ * Display name: prefer a variant that is not shouted in all caps — a genuine
+ * all-caps brand like GROHE has no mixed-case variant to lose to — then the
+ * spelling used on the most products.
+ */
+function groupBrands(rows) {
+  const groups = new Map();
+
+  for (const row of rows) {
+    const name = String(row._id || "").trim();
+    const key = brandKey(name);
+    if (!name || !key) continue;
+    if (!groups.has(key)) groups.set(key, { variants: [], count: 0 });
+    const group = groups.get(key);
+    group.variants.push({ name, count: row.count });
+    group.count += row.count;
+  }
+
+  return [...groups.values()]
+    .map((group) => {
+      const best = [...group.variants].sort((a, b) => {
+        const aCaps = isAllCaps(a.name);
+        const bCaps = isAllCaps(b.name);
+        if (aCaps !== bCaps) return aCaps ? 1 : -1;
+        return b.count - a.count;
+      })[0];
+
+      return {
+        name: best.name,
+        variants: group.variants.map((v) => v.name),
+        count: group.count
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+}
+
 async function build() {
   const [categoryRows, brandRows, metas] = await Promise.all([
     Product.aggregate([
@@ -54,10 +109,7 @@ async function build() {
   for (const c of categories) c.slug = catSlug(c.title, c.category_id);
 
   const brandSlug = uniqueSlugger();
-  const brands = brandRows
-    .map((b) => ({ name: String(b._id).trim(), count: b.count }))
-    .filter((b) => b.name)
-    .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  const brands = groupBrands(brandRows);
   for (const b of brands) b.slug = brandSlug(b.name);
 
   return {

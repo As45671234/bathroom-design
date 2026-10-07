@@ -150,7 +150,12 @@ function publicRoutes(emailLimiter) {
   // pages — had no page on this site to match at all.
   router.get("/brands", async (req, res) => {
     const { brands } = await getRegistry();
-    res.json({ brands: brands.map((b) => ({ name: b.name, slug: b.slug, count: b.count })) });
+    // `variants` are the raw spellings this brand appears under in the
+    // catalog; the brand page filters on them so a product stored as
+    // "AQUANET" still shows on the "Aquanet" page.
+    res.json({
+      brands: brands.map((b) => ({ name: b.name, slug: b.slug, count: b.count, variants: b.variants }))
+    });
   });
 
   // Visual search: upload a photo, AI detects bathroom components, we find matching catalog products

@@ -342,7 +342,10 @@ async function catalogPage() {
 }
 
 async function brandPage(brand) {
-  const items = await listProducts({ ...ACTIVE, brand: brand.name }, MAX_LISTED);
+  // $in over every raw spelling, not an equality on the display name — see
+  // seoRegistry.js#groupBrands: the same brand exists under several spellings
+  // and matching only the canonical one would hide most of its range.
+  const items = await listProducts({ ...ACTIVE, brand: { $in: brand.variants } }, MAX_LISTED);
   const { brands } = await getRegistry();
   const canonical = `${SITE_URL}/brand/${brand.slug}`;
 
