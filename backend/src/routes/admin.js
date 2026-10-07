@@ -16,8 +16,23 @@ const Brigade = require("../models/Brigade");
 const { requireAdmin } = require("../middleware/auth");
 const { workbookToProducts, buildImportTemplateWorkbook } = require("../services/excelImport");
 const { slugify, buildProductKey, normalizeImageUrl, normalizeSiteSettings } = require("../utils");
+const { invalidate: invalidateSeoRegistry } = require("../services/seoRegistry");
 
 const router = express.Router();
+
+// The category/brand registry behind the sitemap, the /catalog/<slug> routes
+// and the SSR renderer is cached for 5 minutes. Admin writes are the only
+// thing that can change it, so drop the cache as soon as one succeeds — a
+// product imported through the admin then shows up in the sitemap on the next
+// crawl rather than up to five minutes later. Done once here rather than in
+// each of the ~20 mutating handlers, so a new one cannot forget it.
+router.use((req, res, next) => {
+  if (req.method === "GET" || req.method === "HEAD") return next();
+  res.on("finish", () => {
+    if (res.statusCode < 400) invalidateSeoRegistry();
+  });
+  next();
+});
 
 const uploadsRoot = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname, "..", "..", "uploads"));
 const videoUploadMaxMb = Math.max(50, Number(process.env.VIDEO_UPLOAD_MAX_MB || 250));
