@@ -27,7 +27,7 @@ interface ProductPageProps {
 }
 
 const BENEFITS = [
-  { icon: 'fa-truck', text: 'Доставка по Алматы, Астане и всему Казахстану' },
+  { icon: 'fa-truck', text: 'Доставка по Астане и всему Казахстану' },
   { icon: 'fa-shield-halved', text: 'Официальная гарантия производителя' },
   { icon: 'fa-rotate-left', text: 'Обмен и возврат по закону РК' },
 ];

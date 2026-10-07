@@ -22,6 +22,7 @@ import {
   specEntries,
 } from '../utils/product';
 import { finishSwatch } from '../utils/finish';
+import { SALON } from '../utils/salon';
 
 /**
  * A showcase row for the homepage: takes products round-robin across categories
@@ -173,7 +174,7 @@ const FEATURED_CATEGORIES: { id: string; image: string }[] = [
 ];
 
 const TRUST_SIGNALS = [
-  { icon: 'fa-truck', title: 'Быстрая доставка', desc: 'По Алматы, Астане и всему Казахстану' },
+  { icon: 'fa-truck', title: 'Быстрая доставка', desc: 'По Астане и всему Казахстану' },
   { icon: 'fa-shield-alt', title: 'Гарантия качества', desc: 'Официальная гарантия от брендов' },
   { icon: 'fa-star', title: 'Проверенные бренды', desc: 'Grohe, Roca, Cersanit и другие' },
   { icon: 'fa-headset', title: 'Консультация', desc: 'Поможем подобрать решение под ваш проект' },
@@ -183,9 +184,9 @@ const HomePage: React.FC<HomePageProps> = ({ categories, catalogStatus, onAddToC
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
   const [isLeadSuccessOpen, setIsLeadSuccessOpen] = useState(false);
 
-  const contactPhone = siteSettings?.phone || '+7 700 000 00 00';
-  const contactEmail = siteSettings?.email || 'info@bathroomdesign.kz';
-  const contactAddress = siteSettings?.address || 'г. Алматы';
+  const contactPhone = siteSettings?.phone || SALON.phone;
+  const contactEmail = siteSettings?.email || SALON.email;
+  const contactAddress = siteSettings?.address || SALON.address;
 
   const featured = useMemo(() => pickFeaturedFamily(categories), [categories]);
   const showcase = useMemo(() => pickShowcase(categories, 8), [categories]);

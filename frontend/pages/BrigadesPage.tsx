@@ -3,9 +3,9 @@ import PartnersDirectory, { PartnersDirectoryConfig, pluralize } from '../compon
 
 const brigadesConfig: PartnersDirectoryConfig = {
   kind: 'brigades',
-  seoTitle: 'Строительные бригады и мастера по монтажу сантехники | Bathroom Design',
+  seoTitle: 'Монтаж сантехники в Астане — строительные бригады | Bathroom Design',
   seoDescription:
-    'Проверенные строительные бригады и мастера по установке сантехники в Алматы и Астане — опыт, примеры работ, контакты. Монтаж ванн, душевых, инсталляций и смесителей.',
+    'Проверенные строительные бригады и мастера по установке сантехники в Астане — опыт, примеры работ, контакты. Монтаж ванн, душевых, инсталляций и смесителей.',
   eyebrow: 'Партнёры',
   heading: 'Строительные бригады',
   intro:

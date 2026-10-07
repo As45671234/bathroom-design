@@ -2,9 +2,12 @@ const mongoose = require('mongoose');
 
 const siteSettingsSchema = new mongoose.Schema(
   {
-    phone: { type: String, default: '+7 700 000 00 00' },
+    // Defaults describe the one real salon. They used to be a placeholder
+    // phone and "г. Алматы" — a branch that does not exist — which leaked
+    // into the footer and into the LocalBusiness schema.
+    phone: { type: String, default: '+7 702 377 83 31' },
     email: { type: String, default: 'info@bathroomdesign.kz' },
-    address: { type: String, default: 'г. Алматы' },
+    address: { type: String, default: 'ЖК Sezim Qala, Baqyt, ул. Розы Баглановой, 2, Астана' },
     kaspiEnabled: { type: Boolean, default: true },
     kaspiUrl: { type: String, default: '' },
     halykEnabled: { type: Boolean, default: false },

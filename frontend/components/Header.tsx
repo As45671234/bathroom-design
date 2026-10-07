@@ -4,6 +4,7 @@ import { Category } from '../types';
 import { normalizeAssetUrl } from '../utils/assetUrl';
 import { scrollToSection } from '../utils/scrollToSection';
 import { categoryPath } from '../utils/product';
+import { SALON } from '../utils/salon';
 import SearchBox from './SearchBox';
 import logoImg from './img/logo-transparent.png';
 
@@ -120,8 +121,12 @@ const Header: React.FC<HeaderProps> = ({ cartCount, categories, phone, logoUrl }
               Подбор по фото
             </Link>
           </div>
+          {/* The salon's real hours. These used to read "ПН – СБ, 09:00 – 18:00",
+              left over from a second (Almaty) location that does not exist —
+              they contradicted the footer and the opening hours in the
+              LocalBusiness schema. */}
           <div className={`text-xs font-semibold ${isTransparent ? 'text-white/70' : 'text-gray-400'}`}>
-            ПН – СБ, 09:00 – 18:00
+            {SALON.hoursShort}
           </div>
         </div>
       </div>

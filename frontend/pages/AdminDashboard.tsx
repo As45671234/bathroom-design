@@ -12,12 +12,13 @@ import {
   adminBulkDeleteProducts, adminBulkUpdateProducts, adminMergeCategories, adminRenameSubcategory,
 } from '../services/api';
 import { normalizeAssetUrl } from '../utils/assetUrl';
+import { SALON } from '../utils/salon';
 import PartnersAdminTab, { DESIGNER_ADMIN_LABELS, BRIGADE_ADMIN_LABELS } from '../components/admin/PartnersAdminTab';
 
 const DEFAULT_SITE_SETTINGS: SiteSettings = {
-  phone: '+7 700 000 00 00',
-  email: 'info@bathroomdesign.kz',
-  address: 'г. Алматы',
+  phone: SALON.phone,
+  email: SALON.email,
+  address: SALON.address,
   kaspiEnabled: true,
   kaspiUrl: '',
   halykEnabled: false,

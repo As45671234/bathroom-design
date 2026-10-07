@@ -5,6 +5,7 @@ import { Category, SiteSettings } from '../types';
 import { normalizeAssetUrl } from '../utils/assetUrl';
 import { scrollToSection } from '../utils/scrollToSection';
 import { categoryPath } from '../utils/product';
+import { SALON } from '../utils/salon';
 import Reveal from './Reveal';
 import logoImg from './img/logo-transparent.png';
 
@@ -21,9 +22,9 @@ const Footer: React.FC<FooterProps> = ({ siteSettings, categories }) => {
   const whatsappUrl = whatsappPhone
     ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent('Здравствуйте! Хочу заказать консультацию.')}`
     : '';
-  const phone = siteSettings?.phone || '+7 700 000 00 00';
-  const email = siteSettings?.email || 'info@bathroomdesign.kz';
-  const address = siteSettings?.address || 'г. Алматы';
+  const phone = siteSettings?.phone || SALON.phone;
+  const email = siteSettings?.email || SALON.email;
+  const address = siteSettings?.address || SALON.address;
   const kaspiEnabled = siteSettings?.kaspiEnabled ?? true;
   const halykEnabled = siteSettings?.halykEnabled ?? false;
   const kaspiUrl = siteSettings?.kaspiUrl || '';
@@ -93,43 +94,33 @@ const Footer: React.FC<FooterProps> = ({ siteSettings, categories }) => {
         </Reveal>
 
         <div className={`grid grid-cols-1 sm:grid-cols-2 ${categories && categories.length > 0 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-12 mb-16 border-t border-white/10 pt-14`}>
-          {/* Contacts — Алматы приходит из SiteSettings (админка), Астана пока
-              статична: это единственная точка в Астане, отдельного поля под
-              неё в SiteSettings/админке нет. Если появится вторая точка или
-              владелец захочет менять адрес/часы Астаны без деплоя — вынести
-              в SiteSettings по образцу phone/address. */}
+          {/* One salon, one contact block.
+              This used to be two: an "Алматы" block fed from SiteSettings and
+              a hardcoded "Астана" one. There is no Almaty branch, so once the
+              owner put the real (Astana) phone and "г. Астана" into the admin,
+              the page showed the same number twice under two different cities
+              and advertised Almaty opening hours that belong to nobody.
+              Inconsistent name/address/phone across a site is also read as a
+              weak local-SEO signal, so this now states the single real salon
+              once. Phone and e-mail stay admin-editable; the address and hours
+              are the salon's own — move them into SiteSettings if a second
+              point ever opens. */}
           <div>
             <h4 className="text-xs font-black uppercase tracking-[0.2em] text-[#CEA549] mb-6">Контакты</h4>
 
-            <div className="mb-6">
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-1.5">Алматы</div>
-              <a href={`tel:${phone.replace(/\s/g, '')}`} className="block text-2xl md:text-3xl font-heading font-semibold text-white hover:text-[#CEA549] transition-colors mb-2">
-                {phone}
-              </a>
-              <div className="text-white/50 text-xs uppercase font-bold tracking-wide mb-3">ПН – СБ, 09:00 – 18:00</div>
-              <div className="space-y-2.5 text-sm text-white/70">
-                <div className="flex items-center gap-3">
-                  <i className="fas fa-envelope text-[#CEA549] w-4"></i>
-                  <a href={`mailto:${email}`} className="hover:text-white transition-colors">{email}</a>
-                </div>
-                <div className="flex items-center gap-3">
-                  <i className="fas fa-map-marker-alt text-[#CEA549] w-4"></i>
-                  <span>{address}</span>
-                </div>
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-1.5">{SALON.city}</div>
+            <a href={`tel:${phone.replace(/\s/g, '')}`} className="block text-2xl md:text-3xl font-heading font-semibold text-white hover:text-[#CEA549] transition-colors mb-2">
+              {phone}
+            </a>
+            <div className="text-white/50 text-xs uppercase font-bold tracking-wide mb-3">{SALON.hoursFull}</div>
+            <div className="space-y-2.5 text-sm text-white/70">
+              <div className="flex items-center gap-3">
+                <i className="fas fa-envelope text-[#CEA549] w-4"></i>
+                <a href={`mailto:${email}`} className="hover:text-white transition-colors">{email}</a>
               </div>
-            </div>
-
-            <div className="pt-5 border-t border-white/10">
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-1.5">Астана</div>
-              <a href="tel:+77023778331" className="block text-xl md:text-2xl font-heading font-semibold text-white hover:text-[#CEA549] transition-colors mb-2">
-                +7 702 377 83 31
-              </a>
-              <div className="text-white/50 text-xs uppercase font-bold tracking-wide mb-3">
-                Ежедневно, 10:00 – 18:00 (обед 13:00 – 14:00)
-              </div>
-              <div className="flex items-start gap-3 text-sm text-white/70">
+              <div className="flex items-start gap-3">
                 <i className="fas fa-map-marker-alt text-[#CEA549] w-4 mt-0.5"></i>
-                <span>ЖК Sezim Qala, Baqyt, ул. Розы Баглановой, 2</span>
+                <span>{address}</span>
               </div>
             </div>
           </div>
