@@ -64,69 +64,98 @@ app.get("/robots.txt", (req, res) => {
     // tool with no indexable content - both are pure crawl-budget waste, and
     // /admin obviously shouldn't be crawlable at all.
     "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /cart\nDisallow: /visual-search\n\n" +
+      // sitemap-main first: it is the short list of landing pages, and a
+      // crawler working top-down should see those before 1400 product URLs.
+      `Sitemap: ${SITE_URL}/sitemap-main.xml\n` +
+      `Sitemap: ${SITE_URL}/sitemap-products.xml\n` +
       `Sitemap: ${SITE_URL}/sitemap.xml`
   );
 });
 
-app.get("/sitemap.xml", async (req, res) => {
-  try {
-    // Product pages moved from the old catalog modal (?product=<id>) to a
-    // real route (/product/:id) - CatalogPage.tsx now only does a client-side
-    // JS redirect for old links found in the wild. Listing /product/:id
-    // directly here matters a lot for Yandex specifically: unlike Googlebot,
-    // Yandex's crawler is much less reliable at executing JS redirects, so a
-    // sitemap full of ?product= links risked those pages never getting
-    // indexed under their real URL.
-    const products = await Product.find({ active: true, inStock: true }).select("_id updatedAt").lean();
+// Sitemaps are split into "landing" (home, catalog, categories, brands,
+// static pages — a couple of dozen URLs) and "products" (~1400).
+//
+// Google reported 1423 of 1425 URLs as "Discovered – currently not indexed":
+// it had never fetched them at all. That is a crawl-budget verdict, not a
+// page-quality one — a young domain with no inbound links gets very few
+// crawls, and a flat list of 1400 near-identical product URLs spends that
+// budget on the least valuable pages. The landing sitemap is small enough to
+// be processed in one go and holds exactly the pages that answer the queries
+// this shop cares about ("Allen Brau сантехника Астана"), so it can be
+// submitted separately and prioritised.
+//
+// /sitemap.xml stays a single flat list of everything for Yandex and for
+// anything that followed the robots.txt reference.
+async function buildSitemapUrls() {
+  const { categories, brands } = await getRegistry();
+  const today = new Date().toISOString().slice(0, 10);
+  const baseUrl = SITE_URL;
+
+  const landing = [
+    { loc: `${baseUrl}/`, lastmod: today, changefreq: "weekly", priority: "1.0" },
+    { loc: `${baseUrl}/catalog`, lastmod: today, changefreq: "daily", priority: "0.9" },
+    { loc: `${baseUrl}/designers`, lastmod: today, changefreq: "monthly", priority: "0.7" },
+    { loc: `${baseUrl}/brigades`, lastmod: today, changefreq: "monthly", priority: "0.7" },
+    { loc: `${baseUrl}/warranty`, lastmod: today, changefreq: "monthly", priority: "0.5" },
     // Categories used to be listed as ?cat=<cyrillic id>, which percent-encodes
     // into unreadable URLs and is crawled worse than a path. They are now
     // /catalog/<latin-slug>; the registry owns that mapping.
-    const { categories, brands } = await getRegistry();
-    const baseUrl = SITE_URL;
-    const today = new Date().toISOString().slice(0, 10);
-    const lastmodOf = (doc) => (doc.updatedAt ? new Date(doc.updatedAt).toISOString().slice(0, 10) : today);
+    ...categories.map((c) => ({
+      loc: `${baseUrl}/catalog/${c.slug}`,
+      lastmod: today,
+      changefreq: "weekly",
+      priority: "0.8"
+    })),
+    ...brands.map((b) => ({
+      loc: `${baseUrl}/brand/${b.slug}`,
+      lastmod: today,
+      changefreq: "weekly",
+      priority: "0.7"
+    }))
+  ];
 
-    const urls = [
-      { loc: `${baseUrl}/`, lastmod: today, changefreq: "weekly", priority: "1.0" },
-      { loc: `${baseUrl}/catalog`, lastmod: today, changefreq: "daily", priority: "0.9" },
-      { loc: `${baseUrl}/designers`, lastmod: today, changefreq: "monthly", priority: "0.7" },
-      { loc: `${baseUrl}/brigades`, lastmod: today, changefreq: "monthly", priority: "0.7" },
-      { loc: `${baseUrl}/warranty`, lastmod: today, changefreq: "monthly", priority: "0.5" },
-      ...categories.map((c) => ({
-        loc: `${baseUrl}/catalog/${c.slug}`,
-        lastmod: today,
-        changefreq: "weekly",
-        priority: "0.8"
-      })),
-      ...brands.map((b) => ({
-        loc: `${baseUrl}/brand/${b.slug}`,
-        lastmod: today,
-        changefreq: "weekly",
-        priority: "0.7"
-      })),
-      ...products.map((p) => ({
-        loc: `${baseUrl}/product/${encodeURIComponent(String(p._id))}`,
-        lastmod: lastmodOf(p),
-        changefreq: "weekly",
-        priority: "0.6"
-      }))
-    ];
+  // Product pages moved from the old catalog modal (?product=<id>) to a
+  // real route (/product/:id) - CatalogPage.tsx now only does a client-side
+  // JS redirect for old links found in the wild. Listing /product/:id
+  // directly here matters a lot for Yandex specifically: unlike Googlebot,
+  // Yandex's crawler is much less reliable at executing JS redirects, so a
+  // sitemap full of ?product= links risked those pages never getting
+  // indexed under their real URL.
+  const products = await Product.find({ active: true, inStock: true }).select("_id updatedAt").lean();
+  const productUrls = products.map((p) => ({
+    loc: `${baseUrl}/product/${encodeURIComponent(String(p._id))}`,
+    lastmod: p.updatedAt ? new Date(p.updatedAt).toISOString().slice(0, 10) : today,
+    changefreq: "weekly",
+    priority: "0.6"
+  }));
 
-    const xml = [
-      '<?xml version="1.0" encoding="UTF-8"?>',
-      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-      ...urls.map((u) =>
-        `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${u.lastmod}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
-      ),
-      "</urlset>"
-    ].join("\n");
+  return { landing, products: productUrls };
+}
 
+const sitemapXml = (urls) =>
+  [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...urls.map((u) =>
+      `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${u.lastmod}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
+    ),
+    "</urlset>"
+  ].join("\n");
+
+const serveSitemap = (pick) => async (req, res) => {
+  try {
+    const { landing, products } = await buildSitemapUrls();
     res.header("Content-Type", "application/xml");
-    res.send(xml);
+    res.send(sitemapXml(pick({ landing, products })));
   } catch (e) {
-    res.status(500).send("<?xml version=\"1.0\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"/>");
+    console.error("[sitemap]", e.message);
+    res.status(500).send('<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"/>');
   }
-});
+};
+
+app.get("/sitemap.xml", serveSitemap(({ landing, products }) => [...landing, ...products]));
+app.get("/sitemap-main.xml", serveSitemap(({ landing }) => landing));
+app.get("/sitemap-products.xml", serveSitemap(({ products }) => products));
 
 // ---------------------------------------------------------------- SPA + SEO
 //
