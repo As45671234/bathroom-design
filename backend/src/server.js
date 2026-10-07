@@ -12,8 +12,9 @@ const { connectDb } = require("./config/db");
 
 const publicRoutes = require("./routes/public");
 const adminRoutes = require("./routes/admin");
-const CategoryMeta = require("./models/CategoryMeta");
 const Product = require("./models/Product");
+const { getRegistry } = require("./services/seoRegistry");
+const { renderPage, templateExists, SITE_URL } = require("./services/seoRender");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -21,7 +22,14 @@ const uploadsRoot = path.resolve(process.env.UPLOADS_DIR || path.join(__dirname,
 
 app.set("trust proxy", 1);
 
-app.use(helmet());
+// CSP off on purpose. Until the SEO renderer landed, nginx served index.html
+// straight off disk and helmet never saw an HTML response, so no CSP was ever
+// in force. Now that HTML flows through Node, helmet's default
+// `script-src 'self'` would start blocking the inline Yandex.Metrika snippet
+// and the CDN font/icon stylesheets — a silent breakage shipped as a side
+// effect of an SEO change. Adding a real policy is worth doing, but as its
+// own task with its own testing.
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
 app.use(morgan("dev"));
 app.use(cors({
@@ -55,13 +63,13 @@ app.get("/robots.txt", (req, res) => {
     // /cart is per-session/empty-by-default and /visual-search is an upload
     // tool with no indexable content - both are pure crawl-budget waste, and
     // /admin obviously shouldn't be crawlable at all.
-    "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /cart\nDisallow: /visual-search\n\nSitemap: https://bathroomdesign.kz/sitemap.xml"
+    "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /cart\nDisallow: /visual-search\n\n" +
+      `Sitemap: ${SITE_URL}/sitemap.xml`
   );
 });
 
 app.get("/sitemap.xml", async (req, res) => {
   try {
-    const metas = await CategoryMeta.find({}).lean();
     // Product pages moved from the old catalog modal (?product=<id>) to a
     // real route (/product/:id) - CatalogPage.tsx now only does a client-side
     // JS redirect for old links found in the wild. Listing /product/:id
@@ -70,7 +78,11 @@ app.get("/sitemap.xml", async (req, res) => {
     // sitemap full of ?product= links risked those pages never getting
     // indexed under their real URL.
     const products = await Product.find({ active: true, inStock: true }).select("_id updatedAt").lean();
-    const baseUrl = "https://bathroomdesign.kz";
+    // Categories used to be listed as ?cat=<cyrillic id>, which percent-encodes
+    // into unreadable URLs and is crawled worse than a path. They are now
+    // /catalog/<latin-slug>; the registry owns that mapping.
+    const { categories, brands } = await getRegistry();
+    const baseUrl = SITE_URL;
     const today = new Date().toISOString().slice(0, 10);
     const lastmodOf = (doc) => (doc.updatedAt ? new Date(doc.updatedAt).toISOString().slice(0, 10) : today);
 
@@ -80,11 +92,17 @@ app.get("/sitemap.xml", async (req, res) => {
       { loc: `${baseUrl}/designers`, lastmod: today, changefreq: "monthly", priority: "0.7" },
       { loc: `${baseUrl}/brigades`, lastmod: today, changefreq: "monthly", priority: "0.7" },
       { loc: `${baseUrl}/warranty`, lastmod: today, changefreq: "monthly", priority: "0.5" },
-      ...metas.map((m) => ({
-        loc: `${baseUrl}/catalog?cat=${encodeURIComponent(m.category_id)}`,
-        lastmod: lastmodOf(m),
+      ...categories.map((c) => ({
+        loc: `${baseUrl}/catalog/${c.slug}`,
+        lastmod: today,
         changefreq: "weekly",
         priority: "0.8"
+      })),
+      ...brands.map((b) => ({
+        loc: `${baseUrl}/brand/${b.slug}`,
+        lastmod: today,
+        changefreq: "weekly",
+        priority: "0.7"
       })),
       ...products.map((p) => ({
         loc: `${baseUrl}/product/${encodeURIComponent(String(p._id))}`,
@@ -107,6 +125,44 @@ app.get("/sitemap.xml", async (req, res) => {
     res.send(xml);
   } catch (e) {
     res.status(500).send("<?xml version=\"1.0\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"/>");
+  }
+});
+
+// ---------------------------------------------------------------- SPA + SEO
+//
+// nginx hands every non-asset GET here instead of serving dist/index.html off
+// disk, so the HTML a crawler receives already carries the right title,
+// description, JSON-LD and a plain-HTML summary of the page. The React bundle
+// then boots over it exactly as before. Asset requests never reach Node —
+// nginx still serves /assets/ straight from disk.
+//
+// express.static stays as a fallback so `node src/server.js` alone serves a
+// working site locally, without needing nginx in front of it.
+const distDir = path.resolve(
+  process.env.FRONTEND_DIST || path.join(__dirname, "..", "..", "frontend", "dist")
+);
+app.use(express.static(distDir, { index: false, maxAge: "1y", immutable: true }));
+
+app.get(/.*/, async (req, res, next) => {
+  // Anything under /api that got this far is a genuine 404, not a page.
+  if (req.path.startsWith("/api/")) return next();
+  if (!req.accepts("html")) return next();
+  if (!templateExists()) {
+    return res.status(503).type("text/plain").send("Frontend build not found. Run: npm run build");
+  }
+
+  try {
+    const { status, html } = await renderPage(req.path, req.query);
+    // index.html must never be cached hard — it is what points at the current
+    // hashed bundle (see the nginx no-cache block added 2026-10-01). The SEO
+    // payload rides along with it, so the same rule applies here.
+    res.status(status).set("Cache-Control", "no-cache").type("html").send(html);
+  } catch (e) {
+    // A failure here (Mongo hiccup, bad product doc) must cost SEO metadata,
+    // never the page itself — fall back to the untouched build, which is
+    // exactly what the site served before this layer existed.
+    console.error("[seo-render]", req.path, e.message);
+    res.status(200).set("Cache-Control", "no-cache").sendFile(path.join(distDir, "index.html"));
   }
 });
 

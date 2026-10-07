@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { prefersReducedMotion } from '../hooks/useLenis';
+import { categoryPath } from '../utils/product';
 
 export interface CategorySlide {
   id: string;
+  /** Latin URL slug; see utils/product.ts#categoryPath. */
+  slug?: string;
   title: string;
   image: string;
   count: number;
@@ -129,7 +132,7 @@ const CategoryCarousel: React.FC<CategoryCarouselProps> = ({ items }) => {
         {slides.map(({ item, clone }, idx) => (
           <Link
             key={`${item.id}-${idx}`}
-            to={`/catalog?cat=${item.id}`}
+            to={categoryPath(item)}
             aria-hidden={clone || undefined}
             tabIndex={clone ? -1 : undefined}
             className="group relative block h-[400px] w-[86%] shrink-0 overflow-hidden bg-[#1D2B49] sm:h-[450px] sm:w-[calc((100%-10px)/2)] lg:h-[480px] lg:w-[calc((100%-20px)/3)]"

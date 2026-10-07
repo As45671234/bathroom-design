@@ -9,6 +9,7 @@ const Designer = require("../models/Designer");
 const Brigade = require("../models/Brigade");
 const { normalizeImageUrl, normalizeSiteSettings } = require("../utils");
 const { analyzeImage, findMatches, isConfigured } = require("../services/visualSearch");
+const { getRegistry } = require("../services/seoRegistry");
 
 const visualSearchUpload = multer({
   storage: multer.memoryStorage(),
@@ -116,6 +117,14 @@ function publicRoutes(emailLimiter) {
       });
     }
 
+    // Latin URL slugs are computed server-side only (see utils/slug.js) so the
+    // frontend never has to reimplement transliteration and drift from the
+    // sitemap / SSR renderer.
+    const { categoryById } = await getRegistry();
+    for (const [id, cat] of categoriesMap.entries()) {
+      cat.slug = categoryById.get(id)?.slug || "";
+    }
+
     const catIds = Array.from(categoriesMap.keys());
     if (catIds.length > 0) {
       const metas = await CategoryMeta.find({ category_id: { $in: catIds } }).lean();
@@ -133,6 +142,15 @@ function publicRoutes(emailLimiter) {
     }
 
     res.json({ categories: Array.from(categoriesMap.values()) });
+  });
+
+  // Brand landing pages (/brand/:slug). Brands were previously reachable only
+  // as a checkbox inside the catalog filters, so queries like "Allen Brau
+  // сантехника Астана" — which competitors rank for with dedicated brand
+  // pages — had no page on this site to match at all.
+  router.get("/brands", async (req, res) => {
+    const { brands } = await getRegistry();
+    res.json({ brands: brands.map((b) => ({ name: b.name, slug: b.slug, count: b.count })) });
   });
 
   // Visual search: upload a photo, AI detects bathroom components, we find matching catalog products

@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Category, SiteSettings } from '../types';
 import { normalizeAssetUrl } from '../utils/assetUrl';
 import { scrollToSection } from '../utils/scrollToSection';
+import { categoryPath } from '../utils/product';
 import Reveal from './Reveal';
 import logoImg from './img/logo-transparent.png';
 
@@ -140,7 +141,7 @@ const Footer: React.FC<FooterProps> = ({ siteSettings, categories }) => {
               <ul className="space-y-3 text-sm text-white/70">
                 {catalogShown.map((cat) => (
                   <li key={cat.id}>
-                    <Link to={`/catalog?cat=${cat.id}`} className="hover:text-white transition-colors">{cat.title}</Link>
+                    <Link to={categoryPath(cat)} className="hover:text-white transition-colors">{cat.title}</Link>
                   </li>
                 ))}
               </ul>

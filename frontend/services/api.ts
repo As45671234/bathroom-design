@@ -1,4 +1,6 @@
 
+import type { Brand } from '../types';
+
 export function getAdminToken() {
   return localStorage.getItem('bathroomdesign_admin_token') || '';
 }
@@ -43,6 +45,14 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
 export async function fetchCatalog() {
   return request<{ categories: any[] }>('/api/catalog');
+}
+
+/** Slug↔name map for the brand landing pages. The catalog itself is already
+ *  in memory, so the brand page filters products client-side — this call only
+ *  resolves which brand a /brand/<slug> URL refers to, which must match the
+ *  server's slugging exactly. */
+export async function fetchBrands() {
+  return request<{ brands: Brand[] }>('/api/brands');
 }
 
 export interface VisualSearchMatch {

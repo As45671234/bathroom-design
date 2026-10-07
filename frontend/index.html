@@ -4,20 +4,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bathroom Design — сантехника, мебель и плитка для ванной комнаты</title>
-    <meta name="description" content="Bathroom Design — интернет-магазин сантехники, мебели, плитки и аксессуаров для ванных комнат в Казахстане. Раковины, смесители, душевые системы, ванны и мебель от проверенных брендов.">
-    <meta name="keywords" content="сантехника, ванная комната, мебель для ванной, плитка, смесители, душевые кабины, ванны, кухня, мойки для кухни, дизайн интерьера, дизайн ванной комнаты, хром, черный матовый, никель, золото, графит, белый, бронза, сатин, Казахстан, Алматы, Астана, GROHE, Allen Brau, Villeroy & Boch, Maier, Bugnatese, Raglo, TECE, Viega">
-    <meta property="og:title" content="Bathroom Design — сантехника и мебель для ванной">
-    <meta property="og:description" content="Каталог сантехники, мебели, плитки и аксессуаров для ванных комнат. Подбор и доставка по Казахстану.">
+    <!-- These are defaults only. In production every HTML response is built by
+         backend/src/services/seoRender.js, which strips the tags below and
+         substitutes per-route title/description/canonical/OG + JSON-LD before
+         sending. Editing them here affects `vite dev` and the no-backend
+         fallback; it does NOT change what crawlers see on the live site.
+         No <meta name="keywords"> on purpose: ignored by Google since 2009,
+         read as a spam signal by Yandex. -->
+    <title>Bathroom Design — салон сантехники в Астане</title>
+    <meta name="description" content="Салон сантехники Bathroom Design в Астане: смесители, ванны, душевые системы, инсталляции, керамика и аксессуары для ванной комнаты. Подбор и доставка по Казахстану.">
+    <meta property="og:title" content="Bathroom Design — салон сантехники в Астане">
+    <meta property="og:description" content="Смесители, ванны, душевые системы, инсталляции и аксессуары для ванной. Салон в Астане, доставка по Казахстану.">
     <meta property="og:type" content="website">
-    <!-- TODO: replace with the real production domain before launch -->
-    <meta property="og:url" content="https://bathroomdesign.kz">
+    <meta property="og:url" content="https://bathroomdesign.kz/">
     <meta property="og:site_name" content="Bathroom Design">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Bathroom Design — сантехника и мебель для ванной">
-    <meta name="twitter:description" content="Каталог сантехники, мебели, плитки и аксессуаров для ванных комнат в Казахстане.">
+    <meta name="twitter:title" content="Bathroom Design — салон сантехники в Астане">
+    <meta name="twitter:description" content="Смесители, ванны, душевые системы, инсталляции и аксессуары для ванной. Салон в Астане.">
     <meta name="theme-color" content="#1D2B49">
-    <!-- TODO: replace with the real production domain before launch -->
     <link rel="canonical" href="https://bathroomdesign.kz/">
     <!-- Browsers cache favicons per-origin very aggressively (survives normal
          hard-refresh) - bump this query string whenever favicon.png changes
@@ -33,32 +37,16 @@
 [
   {
     "@context": "https://schema.org",
-    "@type": "LocalBusiness",
-    "name": "Bathroom Design — Алматы",
-    "description": "Интернет-магазин сантехники, мебели и плитки для ванных комнат",
-    "url": "https://bathroomdesign.kz",
-    "telephone": "+7 700 000 00 00",
-    "email": "info@bathroomdesign.kz",
-    "address": {
-      "@type": "PostalAddress",
-      "addressLocality": "Алматы",
-      "addressCountry": "KZ"
-    },
-    "openingHoursSpecification": {
-      "@type": "OpeningHoursSpecification",
-      "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-      "opens": "09:00",
-      "closes": "18:00"
-    },
-    "logo": "https://bathroomdesign.kz/logo.png"
-  },
-  {
-    "@context": "https://schema.org",
-    "@type": "LocalBusiness",
+    "@type": "Store",
+    "@id": "https://bathroomdesign.kz/#store",
     "name": "Bathroom Design — Астана",
     "description": "Салон сантехники Bathroom Design в Астане — смесители, ванны, душевые системы, плитка и мебель для ванной комнаты",
     "url": "https://bathroomdesign.kz",
     "telephone": "+7 702 377 83 31",
+    "priceRange": "$$$",
+    "currenciesAccepted": "KZT",
+    "areaServed": { "@type": "Country", "name": "Казахстан" },
+    "sameAs": ["https://www.instagram.com/bathroom.design/"],
     "address": {
       "@type": "PostalAddress",
       "streetAddress": "ЖК Sezim Qala, Baqyt, ул. Розы Баглановой, 2",

@@ -3,12 +3,14 @@ import { Link, useParams } from 'react-router-dom';
 import { CatalogStatus, Category, Product } from '../types';
 import { applySeo } from '../utils/seo';
 import {
+  categoryPath,
   displayPrice,
   discountPercent,
   formatPrice,
   getProductImages,
   normalizeAttrEntries,
   productPath,
+  productSeoSubject,
 } from '../utils/product';
 import ProductCard from '../components/ProductCard';
 import { CatalogError } from '../components/CatalogState';
@@ -110,15 +112,18 @@ const ProductPage: React.FC<ProductPageProps> = ({
     const breadcrumbItems = [
       { name: 'Главная', item: SITE_URL },
       { name: 'Каталог', item: `${SITE_URL}/catalog` },
-      ...(category ? [{ name: category.title, item: `${SITE_URL}/catalog?cat=${category.id}` }] : []),
+      ...(category ? [{ name: category.title, item: `${SITE_URL}${categoryPath(category)}` }] : []),
       { name: product.name, item: url },
     ];
 
+    const subject = productSeoSubject(product);
+
     return applySeo({
-      title: `${product.name} — купить в Алматы | Bathroom Design`,
+      title: `${subject} — купить в Астане | Bathroom Design`,
       description:
         String(product.description || '').replace(/\s+/g, ' ').trim() ||
-        `${product.name}${product.brand ? ` (${product.brand})` : ''} — ${category?.title || 'каталог'} Bathroom Design.`,
+        `${subject} — ${category?.title || 'каталог'} Bathroom Design. ` +
+          `В наличии в салоне в Астане, ул. Розы Баглановой, 2.`,
       canonicalUrl: url,
       ogUrl: url,
       ogType: 'product',
@@ -244,7 +249,7 @@ const ProductPage: React.FC<ProductPageProps> = ({
           {category ? (
             <>
               <span>/</span>
-              <Link to={`/catalog?cat=${category.id}`} className="transition-colors hover:text-[#CEA549]">
+              <Link to={categoryPath(category)} className="transition-colors hover:text-[#CEA549]">
                 {category.title}
               </Link>
             </>
@@ -485,7 +490,7 @@ const ProductPage: React.FC<ProductPageProps> = ({
               <h2 className="font-heading text-xl font-semibold text-[#1D2B49] sm:text-2xl">Похожие товары</h2>
               {category ? (
                 <Link
-                  to={`/catalog?cat=${category.id}`}
+                  to={categoryPath(category)}
                   className="flex-shrink-0 text-sm font-semibold text-gray-400 transition-colors hover:text-[#CEA549]"
                 >
                   Вся категория →

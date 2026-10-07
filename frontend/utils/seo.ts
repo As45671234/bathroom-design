@@ -1,7 +1,9 @@
+// `keywords` is deliberately absent. Google has ignored meta keywords since
+// 2009 and Yandex treats a long stuffed list as a spam signal, so the tag was
+// pure downside — removing it from the options type stops it coming back.
 type SeoOptions = {
   title?: string;
   description?: string;
-  keywords?: string;
   canonicalUrl?: string;
   ogType?: string;
   ogImage?: string;
@@ -14,7 +16,6 @@ const DYNAMIC_ATTR = 'data-bathroomdesign-dynamic-seo';
 
 const META_SELECTORS = [
   ['meta[name="description"]', { name: 'description' }],
-  ['meta[name="keywords"]', { name: 'keywords' }],
   ['meta[property="og:title"]', { property: 'og:title' }],
   ['meta[property="og:description"]', { property: 'og:description' }],
   ['meta[property="og:type"]', { property: 'og:type' }],
@@ -63,7 +64,6 @@ export function applySeo(options: SeoOptions) {
   if (options.title) document.title = options.title;
 
   setMeta('meta[name="description"]', { name: 'description' }, options.description);
-  setMeta('meta[name="keywords"]', { name: 'keywords' }, options.keywords);
   setMeta('meta[property="og:title"]', { property: 'og:title' }, options.title);
   setMeta('meta[property="og:description"]', { property: 'og:description' }, options.description);
   setMeta('meta[property="og:type"]', { property: 'og:type' }, options.ogType);

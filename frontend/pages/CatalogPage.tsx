@@ -6,6 +6,7 @@ import CategoryHero from '../components/CategoryHero';
 import ProductCard from '../components/ProductCard';
 import { CatalogError, ProductGridSkeleton } from '../components/CatalogState';
 import {
+  categoryPath,
   dedupeByNormalized,
   getProductColor,
   normalizeAttrEntries,
@@ -646,8 +647,11 @@ const CatalogPage: React.FC<CatalogPageProps> = ({ categories, catalogStatus, on
 
     // Only a single-category view is a canonical page; multi-category picks are
     // just filter combinations and shouldn't each claim their own canonical.
+    // The canonical form is the path URL (/catalog/<slug>), not the ?cat=
+    // query this page actually runs on — see CategoryRoute.tsx for why the two
+    // differ and utils/product.ts#categoryPath for the shared builder.
     const categoryUrl = activeCategory
-      ? `https://bathroomdesign.kz/catalog?cat=${encodeURIComponent(activeCategory.id)}`
+      ? `https://bathroomdesign.kz${categoryPath(activeCategory)}`
       : 'https://bathroomdesign.kz/catalog';
 
     // Mirrors the visual breadcrumb nav rendered below.
@@ -656,18 +660,25 @@ const CatalogPage: React.FC<CatalogPageProps> = ({ categories, catalogStatus, on
       ...(isAllMode
         ? [{ name: 'Каталог', item: 'https://bathroomdesign.kz/catalog' }]
         : [
-            { name: 'Каталог', item: 'https://bathroomdesign.kz/catalog?cat=all' },
+            { name: 'Каталог', item: 'https://bathroomdesign.kz/catalog' },
             { name: categoryTitle, item: categoryUrl },
           ]),
     ];
 
+    // Title/description wording mirrors backend/src/services/seoRender.js
+    // (categoryPage / catalogPage). The server version is what crawlers index
+    // on the first pass; if this one differed, the page would appear to change
+    // its title and description between that pass and Google's JS render.
     return applySeo({
-      title: formatSeoValue(activeCategory?.seoTitle) || `${categoryTitle} | Каталог Bathroom Design`,
+      title:
+        formatSeoValue(activeCategory?.seoTitle) ||
+        (isAllMode
+          ? 'Каталог сантехники в Астане — смесители, ванны, душевые | Bathroom Design'
+          : `${categoryTitle} — купить в Астане | Bathroom Design`),
       description: formatSeoValue(activeCategory?.seoDescription) ||
         (isAllMode
-          ? `Каталог Bathroom Design: ${filteredProducts.length} товаров.`
-          : `Каталог Bathroom Design: ${filteredProducts.length} товаров в категории ${categoryTitle}.`),
-      keywords: formatSeoValue(activeCategory?.seoKeywords) || [categoryTitle, 'сантехника', 'ванная комната'].join(', '),
+          ? `Полный каталог сантехники Bathroom Design: ${filteredProducts.length} товаров. Смесители, ванны, душевые системы, инсталляции, керамика. Астана, ул. Розы Баглановой, 2.`
+          : `${categoryTitle} в Астане — ${filteredProducts.length} товаров в салоне Bathroom Design, ул. Розы Баглановой, 2. Консультация, подбор и доставка по Казахстану.`),
       canonicalUrl: categoryUrl,
       ogUrl: categoryUrl,
       ogType: 'website',

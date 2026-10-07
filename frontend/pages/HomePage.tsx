@@ -198,7 +198,9 @@ const HomePage: React.FC<HomePageProps> = ({ categories, catalogStatus, onAddToC
     () =>
       FEATURED_CATEGORIES.flatMap(({ id, image }) => {
         const cat = categories.find((c) => c.id === id);
-        return cat ? [{ id: cat.id, title: cat.title, image, count: cat.items?.length || 0 }] : [];
+        return cat
+          ? [{ id: cat.id, slug: cat.slug, title: cat.title, image, count: cat.items?.length || 0 }]
+          : [];
       }),
     [categories]
   );
@@ -215,9 +217,8 @@ const HomePage: React.FC<HomePageProps> = ({ categories, catalogStatus, onAddToC
     const totalItems = categories.reduce((sum, category) => sum + (category.items?.length || 0), 0);
 
     return applySeo({
-      title: 'Bathroom Design — сантехника, мебель и плитка для ванной комнаты',
-      description: `Bathroom Design — каталог сантехники, мебели и плитки для ванных комнат в Казахстане. Категорий: ${totalCategories}, товаров: ${totalItems}.`,
-      keywords: 'сантехника, ванная комната, мебель для ванной, плитка, смесители, душевые кабины, кухня, мойки для кухни, дизайн интерьера, дизайн ванной комнаты, хром, черный матовый, никель, золото, графит, белый, бронза, сатин, Казахстан, Алматы, Астана, GROHE, Allen Brau, Villeroy & Boch, Maier, Bugnatese, Raglo, TECE, Viega',
+      title: 'Bathroom Design — салон сантехники в Астане: смесители, ванны, душевые системы',
+      description: `Салон сантехники Bathroom Design в Астане, ул. Розы Баглановой, 2. ${totalItems} товаров в ${totalCategories} категориях: смесители, ванны, душевые системы, инсталляции, керамика и аксессуары. Доставка по Казахстану.`,
       canonicalUrl: 'https://bathroomdesign.kz/',
       ogType: 'website',
       ogUrl: 'https://bathroomdesign.kz/',

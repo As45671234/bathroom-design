@@ -92,6 +92,38 @@ const stripFinishTokens = (product: Pick<Product, 'name' | 'sku' | 'attrs'>) => 
 };
 
 /**
+ * The product as a search-result subject: the name, plus whichever of the
+ * finish / brand / SKU it does not already contain.
+ *
+ * Names are not unique in this catalog — 2613 active products share 2413
+ * names, and "Однорычажный Смеситель для раковины" alone covers 17 variants
+ * that differ only by finish. A name-only <title> would be an exact duplicate
+ * across hundreds of pages. Conversely many names already carry all three
+ * qualifiers inline, so appending unconditionally just made titles redundant
+ * and over-long.
+ *
+ * Kept in step with backend/src/services/seoRender.js#productSubject, which
+ * builds the title crawlers see first; if the two disagree the page appears
+ * to change title between Google's HTML pass and its JS render pass.
+ */
+export const productSeoSubject = (product: Pick<Product, 'name' | 'brand' | 'sku' | 'attrs'>) => {
+  const name = String(product.name || '').trim();
+  const parts = [name];
+  const has = (token?: string) => {
+    const t = String(token || '').trim();
+    if (!t) return true;
+    return new RegExp(escapeRe(t).replace(/[её]/gi, '[её]'), 'i').test(name);
+  };
+
+  const color = getProductColor(product);
+  if (color && !has(color)) parts.push(color);
+  if (product.brand && !has(product.brand)) parts.push(product.brand);
+  if (parts.length === 1 && product.sku && !has(product.sku)) parts.push(product.sku);
+
+  return parts.join(', ');
+};
+
+/**
  * Display name for a finish family — the model without the finish word or the
  * SKU, so the heading doesn't read "…Raglo белый R20.10.08" directly above a
  * swatch row that already says "Белый". Falls back to the raw name if
@@ -126,6 +158,18 @@ export const specEntries = (product: Pick<Product, 'attrs'>) =>
 
 /** Canonical in-app link to a product page. */
 export const productPath = (product: Pick<Product, 'id'>) => `/product/${encodeURIComponent(product.id)}`;
+
+/**
+ * Canonical in-app link to a category.
+ *
+ * `/catalog/<latin-slug>` is the indexable form that the sitemap, every
+ * canonical tag and the server-side renderer agree on. The slug is assigned
+ * server-side (backend utils/slug.js) and arrives with the catalog; the
+ * `?cat=` fallback covers the window right after a deploy where a client
+ * still holds a catalog response cached from before slugs existed.
+ */
+export const categoryPath = (category: { id: string; slug?: string }) =>
+  category.slug ? `/catalog/${category.slug}` : `/catalog?cat=${encodeURIComponent(category.id)}`;
 
 /** Discount percentage, or 0 when there's no meaningful old price. */
 export const discountPercent = (product: Pick<Product, 'prices'>) => {

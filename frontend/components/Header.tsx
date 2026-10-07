@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Category } from '../types';
 import { normalizeAssetUrl } from '../utils/assetUrl';
 import { scrollToSection } from '../utils/scrollToSection';
+import { categoryPath } from '../utils/product';
 import SearchBox from './SearchBox';
 import logoImg from './img/logo-transparent.png';
 
@@ -159,7 +160,7 @@ const Header: React.FC<HeaderProps> = ({ cartCount, categories, phone, logoUrl }
                 {sortedCategories.map((cat) => (
                   <Link
                     key={cat.id}
-                    to={`/catalog?cat=${cat.id}`}
+                    to={categoryPath(cat)}
                     className="flex items-center justify-between gap-3 rounded-xl px-4 py-2 text-sm text-[#1D2B49] transition-all hover:bg-gray-50"
                   >
                     <span>{cat.title}</span>
@@ -236,7 +237,7 @@ const Header: React.FC<HeaderProps> = ({ cartCount, categories, phone, logoUrl }
                   {sortedCategories.map((cat) => (
                     <Link
                       key={cat.id}
-                      to={`/catalog?cat=${cat.id}`}
+                      to={categoryPath(cat)}
                       className="flex items-center justify-between gap-3 text-base text-[#1D2B49]/80"
                       onClick={() => setMobileMenuOpen(false)}
                     >

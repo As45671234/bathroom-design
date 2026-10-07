@@ -8,6 +8,8 @@ import ErrorBoundary from './components/ErrorBoundary';
 import HomePage from './pages/HomePage';
 import CatalogPage from './pages/CatalogPage';
 import ProductPage from './pages/ProductPage';
+import BrandPage from './pages/BrandPage';
+import CategoryRoute from './pages/CategoryRoute';
 import VisualSearchPage from './pages/VisualSearchPage';
 import DesignersPage from './pages/DesignersPage';
 import BrigadesPage from './pages/BrigadesPage';
@@ -271,6 +273,23 @@ const App: React.FC = () => {
               path="/catalog"
               element={
                 <CatalogPage
+                  categories={categories}
+                  catalogStatus={catalogStatus}
+                  onRetryCatalog={retryCatalog}
+                  onAddToCart={addToCart}
+                />
+              }
+            />
+            {/* Canonical, indexable category + brand URLs. See the comments in
+                CategoryRoute.tsx and BrandPage.tsx. */}
+            <Route
+              path="/catalog/:slug"
+              element={<CategoryRoute categories={categories} catalogStatus={catalogStatus} />}
+            />
+            <Route
+              path="/brand/:slug"
+              element={
+                <BrandPage
                   categories={categories}
                   catalogStatus={catalogStatus}
                   onRetryCatalog={retryCatalog}

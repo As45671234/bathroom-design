@@ -30,6 +30,10 @@ export interface Product {
 
 export interface Category {
   id: string;
+  /** Latin URL slug for /catalog/<slug>. Computed server-side (backend
+   *  utils/slug.js) and sent down with the catalog so the frontend, the
+   *  sitemap and the SSR renderer can never disagree about a URL. */
+  slug?: string;
   title: string;
   items: Product[];
   image?: string;
@@ -146,6 +150,13 @@ export interface Partner {
 
 export type Designer = Partner;
 export type Brigade = Partner;
+
+/** A catalog brand as a landing-page subject (/brand/<slug>). */
+export interface Brand {
+  name: string;
+  slug: string;
+  count: number;
+}
 
 export interface SiteSettings {
   phone: string;
